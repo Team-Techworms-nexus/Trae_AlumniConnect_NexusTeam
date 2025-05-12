@@ -17,6 +17,14 @@ from pydantic_core import core_schema
 import pytz
 import json
 
+from fastapi import Body
+from fastapi import UploadFile, File
+from fastapi.responses import StreamingResponse
+import pandas as pd
+import random
+import io
+
+
 # MongoDB setup (global client, databases will be selected dynamically)
 MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 client = AsyncIOMotorClient(MONGODB_URL)
@@ -60,7 +68,7 @@ class UserBase(BaseModel):
     name: str
     email: str
     role: str = Field(..., pattern="^(Student|Alumni|Admin)$")
-    collegeId: str  # Identifies the college this user belongs to
+    collegeId: Optional[str] = None  # Identifies the college this user belongs to
     department: Optional[str] = None
     location: Optional[str] = None
     status: Optional[str] = "offline"
@@ -73,6 +81,7 @@ class UserCreate(UserBase):
     password: str  # Only required for registration
 
 class StudentSchema(UserBase):
+    rollno: Optional[str] = None
     prn: Optional[str] = None
     gradYear: Optional[int] = None
     degree: Optional[str] = None
@@ -91,7 +100,11 @@ class AlumniSchema(UserBase):
     achievements: Optional[List[dict]] = []
 
 class AdminSchema(UserBase):
+    collegeStatus: Optional[str] = Field("rejected", pattern="^(approved|rejected)$")
     permissions: List[str] = ["manage_users", "view_reports"]
+
+class AdminCreate(AdminSchema):
+    password: str    
 
 class User(UserBase):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
@@ -217,12 +230,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        
         email: str = payload.get("email")
         college_id: str = payload.get("collegeId")
         if email is None or college_id is None:
             raise credentials_exception
         token_data = {"email": email, "collegeId": college_id}
     except JWTError:
+        
         raise credentials_exception
 
     # Fetch the college's database name from the global SaaS_Management database
@@ -259,25 +274,29 @@ def custom_openapi():
             "bearerFormat": "JWT",
         }
     }
+    # Define a set of (path, method) tuples that require BearerAuth
+    protected_endpoints = {
+        ("/colleges/", "get"),
+        ("/bulk-register-students/", "post"),
+        ("/bulk-register-alumni/", "post"),
+        ("/admins/", "post"),
+        ("/users/me", "get"),
+        ("/users/{user_id}", "get"),
+        ("/users/", "get"),
+        ("/messages/", "post"),
+        ("/messages/", "get"),
+        ("/groups/", "post"),
+        ("/groups/", "get"),
+        ("/groups/{group_id}", "get"),
+        ("/groups/{group_id}/members", "post"),
+    }
     for path, methods in openapi_schema["paths"].items():
         for method in methods:
-            if (
-                (path == "/colleges/" and method.lower() == "get")
-                or (path == "/your/post/endpoint" and method.lower() == "post")
-                or (path in [
-                    "/users/me",
-                    "/users/{user_id}",
-                    "/users/",
-                    "/messages/",
-                    "/groups/",
-                    "/groups/{group_id}",
-                    "/groups/{group_id}/members"
-                ])
-            ):
+            if (path, method.lower()) in protected_endpoints:
                 methods[method]["security"] = [{"BearerAuth": []}]
 
     app.openapi_schema = openapi_schema
-    return openapi_schema
+    return app.openapi_schema
 
 app.openapi = custom_openapi
 
@@ -803,6 +822,34 @@ async def approve_college(college_id: str):
     await college_db["messages"].create_index([("senderId", 1), ("receiverId", 1), ("timestamp", -1)])
     await college_db["messages"].create_index([("groupId", 1), ("timestamp", -1)])
     await college_db["groups"].create_index([("members", 1)])
+    
+    # --- Add admin user to the college's Admin collection ---
+    # Use the college's registration info for admin
+    admin_email = college.get("email")
+    admin_password = college.get("password")  # Already hashed in registration
+    admin_name = college.get("collegeId")
+    admin_college_id = college.get("collegeId")
+    
+    
+    # Only add if email is present and not already in Admin collection
+    if admin_email:
+        existing_admin = await college_db["Admin"].find_one({"email": admin_email})
+        if not existing_admin:
+            admin_obj = AdminSchema(
+                name=admin_name,
+                email=admin_email,
+                role="Admin",
+                collegeId=admin_college_id,
+                status="offline",
+                lastSeen=None,
+                createdAt=get_current_time(),
+                collegeStatus="approved",
+                permissions=["manage_users", "view_reports"]
+            )
+            admin_dict = admin_obj.dict()
+            admin_dict["password"] = admin_password  # Already hashed
+            await college_db["Admin"].insert_one(admin_dict)
+
     return {"status": "success", "message": f"College {college['collegeName']} approved and collections created."}
 
 
@@ -825,13 +872,15 @@ async def college_login(credentials: CollegeLogin):
     if college.get("status") != "approved":
         raise HTTPException(status_code=403, detail="College account is not approved yet")
     
-    # Create a token for the college
-    token_data = {
-        "collegeId": college["collegeId"],
-        "collegeName": college["collegeName"],
-        "role": "college"
+    # Create a token for the college using the utility function
+    
+    user_info = {
+        "name": college["collegeName"],
+        "email": college["email"],
+        "role": "Admin",
+        "collegeId": college["collegeId"]
     }
-    token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
+    token = create_access_token(user_info, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     
     return {"token": token, "college_info": {
         "collegeId": college["collegeId"],
@@ -839,4 +888,195 @@ async def college_login(credentials: CollegeLogin):
         "status": college["status"],
         "databaseName": college["databaseName"]
     }}
+
+# ... existing code ...
+
+
+
+
+
+@app.post("/admins/")
+async def add_admin(
+    admin: AdminCreate = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    # Only allow approved Admins to add new admins
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only admins can add new admins.")
+    if current_user.get("collegeStatus") != "approved":
+        raise HTTPException(status_code=403, detail="College account is not approved yet")
+
+    college_db = current_user["collegeDb"]
+    college_id = current_user["collegeId"]
+
+    # Check if email already exists in Admin collection
+    existing_admin = await college_db["Admin"].find_one({"email": admin.email})
+    if existing_admin:
+        raise HTTPException(status_code=400, detail="Email already registered as admin.")
+
+    admin_dict = admin.dict()
+    admin_dict["role"] = "Admin"
+    admin_dict["collegeId"] = college_id
+    admin_dict["createdAt"] = get_current_time()
+    admin_dict["collegeStatus"] = "approved"
+    admin_dict["password"] = get_password_hash(admin_dict["password"])
+
+    result = await college_db["Admin"].insert_one(admin_dict)
+    new_admin = await college_db["Admin"].find_one({"_id": result.inserted_id})
+    new_admin["_id"] = str(new_admin["_id"])
+    del new_admin["password"]
+    return {"status": "success", "admin": new_admin}
+
+
+
+
+@app.post("/bulk-register-students/")
+async def bulk_register_students(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    # Only allow Admins
+    
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only college admins can bulk register students.")
+    if current_user["collegeStatus"]!= "approved":
+        raise HTTPException(status_code=403, detail="College account is not approved yet")
+    college_db = current_user["collegeDb"]
+    college_id = current_user["collegeId"]
+    
+    # Read the uploaded Excel file into a pandas DataFrame
+    contents = await file.read()
+    df = pd.read_excel(io.BytesIO(contents))
+
+    # Normalize column names
+    df.columns = [col.strip().lower() for col in df.columns]
+
+    # Check for required columns
+    if not {'rollno', 'email'}.issubset(df.columns):
+        raise HTTPException(status_code=400, detail="Excel must have 'rollno' and 'email' columns.")
+
+    # Prepare results for Excel output
+    passwords = []
+    statuses = []
+
+    for idx, row in df.iterrows():
+        rollno = str(row['rollno']).strip()
+        email = str(row['email']).strip().lower()
+        password = str(random.randint(100000, 999999))
+
+        # Check if student already exists
+        existing = await college_db["Student"].find_one({"email": email})
+        if existing:
+            passwords.append("")
+            statuses.append("Already Exists")
+            continue
+
+        # Prepare student dict
+        student_obj = StudentSchema(
+            name=rollno,
+            email=email,
+            role="Student",
+            collegeId=college_id,
+            rollno=rollno,
+            status="offline",
+            lastSeen=None,
+            createdAt=get_current_time()
+        )
+        student_dict = student_obj.dict()
+        student_dict["password"] = get_password_hash(password)
+        await college_db["Student"].insert_one(student_dict)
+        passwords.append(password)
+        statuses.append("Created")
+
+    # Add password and status columns to DataFrame
+    df['password'] = passwords
+    df['status'] = statuses
+
+    # Write the DataFrame to an Excel file in memory
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    output.seek(0)
+
+    # Return the file as a response
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=students_with_passwords.xlsx"}
+    )
+
+
+@app.post("/bulk-register-alumni/")
+async def bulk_register_alumni(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    # Only allow Admins
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only college admins can bulk register alumni.")
+    if current_user["collegeStatus"] != "approved":
+        raise HTTPException(status_code=403, detail="College account is not approved yet")
+    college_db = current_user["collegeDb"]
+    college_id = current_user["collegeId"]
+
+    # Read the uploaded Excel file into a pandas DataFrame
+    contents = await file.read()
+    df = pd.read_excel(io.BytesIO(contents))
+
+    # Normalize column names
+    df.columns = [col.strip().lower() for col in df.columns]
+
+    # Check for required columns
+    if not {'prn', 'email'}.issubset(df.columns):
+        raise HTTPException(status_code=400, detail="Excel must have 'prn' and 'email' columns.")
+
+    # Prepare results for Excel output
+    passwords = []
+    statuses = []
+
+    for idx, row in df.iterrows():
+        prn = str(row['prn']).strip()
+        email = str(row['email']).strip().lower()
+        password = str(random.randint(100000, 999999))
+
+        # Check if alumni already exists
+        existing = await college_db["Alumni"].find_one({"email": email})
+        if existing:
+            passwords.append("")
+            statuses.append("Already Exists")
+            continue
+
+        # Prepare alumni dict
+        alumni_obj = AlumniSchema(
+            name=prn,
+            email=email,
+            role="Alumni",
+            collegeId=college_id,
+            prn=prn,
+            status="offline",
+            lastSeen=None,
+            createdAt=get_current_time()
+        )
+        alumni_dict = alumni_obj.dict()
+        alumni_dict["password"] = get_password_hash(password)
+        await college_db["Alumni"].insert_one(alumni_dict)
+        passwords.append(password)
+        statuses.append("Created")
+
+    # Add password and status columns to DataFrame
+    df['password'] = passwords
+    df['status'] = statuses
+
+    # Write the DataFrame to an Excel file in memory
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    output.seek(0)
+
+    # Return the file as a response
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=alumni_with_passwords.xlsx"}
+    )
     
