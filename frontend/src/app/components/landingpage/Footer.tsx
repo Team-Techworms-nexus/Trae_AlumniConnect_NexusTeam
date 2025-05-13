@@ -63,10 +63,10 @@ export default function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 mb-8">
           <div className="col-span-2 lg:col-span-1">
             <div className="flex items-center space-x-2 mb-4">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold">AC</span>
+              <div className="w-10 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold">N4G</span>
               </div>
-              <span className="text-xl font-semibold text-white">Alumni Connect</span>
+              <span className="text-xl font-semibold text-white">Net4Grad</span>
             </div>
             <p className="text-gray-400 mb-4">Building stronger alumni communities through technology.</p>
           </div>
@@ -126,7 +126,7 @@ export default function Footer() {
 
         <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center">
           <p className="text-gray-400 text-sm mb-4 md:mb-0">
-            © {new Date().getFullYear()} Alumni Connect. All rights reserved.
+            © {new Date().getFullYear()} Net4Grad. All rights reserved.
           </p>
           <div className="flex space-x-6">
             {socialLinks.map((item) => (

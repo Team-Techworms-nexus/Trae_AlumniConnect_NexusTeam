@@ -8,7 +8,7 @@ export default function CTASection() {
           Ready to Transform Your Alumni Network?
         </h2>
         <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-          Join hundreds of institutions already building stronger communities with Alumni Connect.
+          Join hundreds of institutions already building stronger communities with Net4Grad.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <button className="px-8 py-4 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-lg font-semibold">

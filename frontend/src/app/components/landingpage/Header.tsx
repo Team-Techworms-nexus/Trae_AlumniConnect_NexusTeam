@@ -47,10 +47,10 @@ export default function Header() {
           <button className="px-5 py-2 text-gray-700 hover:text-blue-600 transition-colors duration-300 font-medium">
             Book Demo
           </button>
-          <button className="px-5 py-2 text-gray-700 hover:text-blue-600 transition-colors duration-300 font-medium">
+          <Link href="/login" className="px-5 py-2 text-gray-700 hover:text-blue-600 transition-colors duration-300 font-medium">
             Login
-          </button>
-          <button className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-medium">
+          </Link>
+          <button class-ia="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-medium">
             Sign Up
           </button>
         </div>
