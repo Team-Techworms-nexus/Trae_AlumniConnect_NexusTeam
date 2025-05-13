@@ -67,7 +67,7 @@ class PyObjectId(str):
 class UserBase(BaseModel):
     name: str
     email: str
-    role: str = Field(..., pattern="^(Student|Alumni|Admin)$")
+    role: str = Field("anonymous", pattern="^(Student|Alumni|Admin)$")
     collegeId: Optional[str] = None  # Identifies the college this user belongs to
     department: Optional[str] = None
     location: Optional[str] = None
@@ -287,6 +287,9 @@ def custom_openapi():
         ("/messages/", "get"),
         ("/groups/", "post"),
         ("/groups/", "get"),
+        ("/admins/", "get"),
+        ("/add-admin/", "post"),
+        ("/admins/{admin_id}", "delete"),
         ("/groups/{group_id}", "get"),
         ("/groups/{group_id}/members", "post"),
     }
@@ -889,13 +892,19 @@ async def college_login(credentials: CollegeLogin):
         "databaseName": college["databaseName"]
     }}
 
-# ... existing code ...
 
+@app.get("/admins/")
+async def list_admins(current_user: dict = Depends(get_current_user)):
+    college_db = current_user["collegeDb"]
+    admins = []
+    async for admin in college_db["Admin"].find():
+        admin["_id"] = str(admin["_id"])
+        if "password" in admin:
+            del admin["password"]
+        admins.append(admin)
+    return {"admins": admins}
 
-
-
-
-@app.post("/admins/")
+@app.post("/add-admin/")
 async def add_admin(
     admin: AdminCreate = Body(...),
     current_user: dict = Depends(get_current_user)
@@ -928,6 +937,89 @@ async def add_admin(
     return {"status": "success", "admin": new_admin}
 
 
+@app.delete("/admins/{admin_id}")
+async def remove_admin(
+    admin_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only allow approved Admins to remove admins
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only admins can remove admins.")
+    if current_user.get("collegeStatus") != "approved":
+        raise HTTPException(status_code=403, detail="College account is not approved yet")
+
+    college_db = current_user["collegeDb"]
+
+    # Validate ObjectId
+    if not ObjectId.is_valid(admin_id):
+        raise HTTPException(status_code=400, detail="Invalid admin ID.")
+
+    # Prevent self-removal
+    if str(current_user["_id"]) == admin_id:
+        raise HTTPException(status_code=400, detail="Admins cannot remove themselves.")
+
+    # Check if admin exists
+    existing_admin = await college_db["Admin"].find_one({"_id": ObjectId(admin_id)})
+    if not existing_admin:
+        raise HTTPException(status_code=404, detail="Admin not found.")
+
+    # Remove the admin
+    result = await college_db["Admin"].delete_one({"_id": ObjectId(admin_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to remove admin.")
+
+    return {"status": "success", "message": f"Admin with id {admin_id} removed."}
+
+
+@app.delete("/students/")
+async def remove_students(
+    student_ids: List[str] = Body(..., embed=True),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only admins can remove students.")
+    if current_user.get("collegeStatus") != "approved":
+        raise HTTPException(status_code=403, detail="College account is not approved yet")
+
+    college_db = current_user["collegeDb"]
+
+    # Validate all IDs
+    invalid_ids = [sid for sid in student_ids if not ObjectId.is_valid(sid)]
+    if invalid_ids:
+        raise HTTPException(status_code=400, detail=f"Invalid student IDs: {invalid_ids}")
+
+    object_ids = [ObjectId(sid) for sid in student_ids]
+    result = await college_db["Student"].delete_many({"_id": {"$in": object_ids}})
+    return {
+        "status": "success",
+        "deleted_count": result.deleted_count,
+        "message": f"Removed {result.deleted_count} students."
+    }
+
+@app.delete("/alumni/")
+async def remove_alumni(
+    alumni_ids: List[str] = Body(..., embed=True),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only admins can remove alumni.")
+    if current_user.get("collegeStatus") != "approved":
+        raise HTTPException(status_code=403, detail="College account is not approved yet")
+
+    college_db = current_user["collegeDb"]
+
+    # Validate all IDs
+    invalid_ids = [aid for aid in alumni_ids if not ObjectId.is_valid(aid)]
+    if invalid_ids:
+        raise HTTPException(status_code=400, detail=f"Invalid alumni IDs: {invalid_ids}")
+
+    object_ids = [ObjectId(aid) for aid in alumni_ids]
+    result = await college_db["Alumni"].delete_many({"_id": {"$in": object_ids}})
+    return {
+        "status": "success",
+        "deleted_count": result.deleted_count,
+        "message": f"Removed {result.deleted_count} alumni."
+    }
 
 
 @app.post("/bulk-register-students/")
@@ -1005,7 +1097,6 @@ async def bulk_register_students(
         headers={"Content-Disposition": f"attachment; filename=students_with_passwords.xlsx"}
     )
 
-
 @app.post("/bulk-register-alumni/")
 async def bulk_register_alumni(
     file: UploadFile = File(...),
@@ -1027,14 +1118,15 @@ async def bulk_register_alumni(
     df.columns = [col.strip().lower() for col in df.columns]
 
     # Check for required columns
-    if not {'prn', 'email'}.issubset(df.columns):
-        raise HTTPException(status_code=400, detail="Excel must have 'prn' and 'email' columns.")
+    if not {'name', 'prn', 'email'}.issubset(df.columns):
+        raise HTTPException(status_code=400, detail="Excel must have 'name', 'prn', and 'email' columns.")
 
     # Prepare results for Excel output
     passwords = []
     statuses = []
 
     for idx, row in df.iterrows():
+        name = str(row['name']).strip()
         prn = str(row['prn']).strip()
         email = str(row['email']).strip().lower()
         password = str(random.randint(100000, 999999))
@@ -1048,7 +1140,7 @@ async def bulk_register_alumni(
 
         # Prepare alumni dict
         alumni_obj = AlumniSchema(
-            name=prn,
+            name=name,
             email=email,
             role="Alumni",
             collegeId=college_id,
@@ -1079,4 +1171,3 @@ async def bulk_register_alumni(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=alumni_with_passwords.xlsx"}
     )
-    

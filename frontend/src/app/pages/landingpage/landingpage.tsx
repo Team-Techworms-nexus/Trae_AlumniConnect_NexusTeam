@@ -10,6 +10,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col font-[family-name:var(--font-geist-sans)]">
       <Header />
+      <p> Hi</p>
       <main>
         <Hero />
         <Partners />
