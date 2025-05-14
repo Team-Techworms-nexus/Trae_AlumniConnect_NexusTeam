@@ -10,27 +10,35 @@ export default function LoginForm() {
   const router = useRouter();
   const [userType, setUserType] = useState<'student' | 'admin' | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
-  const [formData, setFormData] = useState({
+  const [studentFormData, setStudentFormData] = useState({
+    email: '',
+    password: '',
+  });
+  const [adminFormData, setAdminFormData] = useState({
     email: '',
     password: '',
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, formType: 'student' | 'admin') => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
     try {
-      // TODO: Implement actual login logic here
-      console.log('Login attempt:', { ...formData, userType });
+      const formData = formType === 'student' ? studentFormData : adminFormData;
+      console.log('Login attempt:', { ...formData, userType: formType });
       
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // For demo purposes, always succeed
-      router.push('/dashboard');
+      // Redirect based on user type
+      if (formType === 'student') {
+        router.push('/dashboard');
+      } else {
+        router.push('/admindashboard');
+      }
     } catch (err) {
       setError('Invalid email or password');
     } finally {
@@ -38,15 +46,21 @@ export default function LoginForm() {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>, formType: 'student' | 'admin') => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    if (formType === 'student') {
+      setStudentFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    } else {
+      setAdminFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
-  // Add click outside handler
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
@@ -124,7 +138,7 @@ export default function LoginForm() {
                   </h3>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={(e) => handleSubmit(e, userType)} className="space-y-6">
                   <div>
                     <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                       Email
@@ -135,8 +149,8 @@ export default function LoginForm() {
                       type="email"
                       autoComplete="email"
                       required
-                      value={formData.email}
-                      onChange={handleChange}
+                      value={userType === 'student' ? studentFormData.email : adminFormData.email}
+                      onChange={(e) => handleChange(e, userType)}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="Enter your email"
                     />
@@ -152,8 +166,8 @@ export default function LoginForm() {
                       type="password"
                       autoComplete="current-password"
                       required
-                      value={formData.password}
-                      onChange={handleChange}
+                      value={userType === 'student' ? studentFormData.password : adminFormData.password}
+                      onChange={(e) => handleChange(e, userType)}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="Enter your password"
                     />

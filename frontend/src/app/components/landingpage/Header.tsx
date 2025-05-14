@@ -44,15 +44,12 @@ export default function Header() {
         </div>
 
         <div className="hidden md:flex items-center space-x-4">
-          <button className="px-5 py-2 text-gray-700 hover:text-blue-600 transition-colors duration-300 font-medium">
+        <Link href="/register" className="px-5 py-2 text-gray-700 hover:text-blue-600 transition-colors duration-300 font-medium">
             Book Demo
-          </button>
+          </Link>
           <Link href="/login" className="px-5 py-2 text-gray-700 hover:text-blue-600 transition-colors duration-300 font-medium">
             Login
           </Link>
-          <button className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 hover:shadow-lg hover:scale-105 transition-all duration-300 font-medium">
-            Sign Up
-          </button>
         </div>
 
         <button className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors">
