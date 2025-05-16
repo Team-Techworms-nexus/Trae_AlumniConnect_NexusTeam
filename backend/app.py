@@ -100,11 +100,10 @@ class AlumniSchema(UserBase):
     achievements: Optional[List[dict]] = []
 
 class AdminSchema(UserBase):
-    collegeStatus: Optional[str] = Field("rejected", pattern="^(approved|rejected)$")
     permissions: List[str] = ["manage_users", "view_reports"]
-
+ 
 class AdminCreate(AdminSchema):
-    password: str    
+    password: str  # Only required for registration 
 
 class User(UserBase):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
@@ -165,11 +164,10 @@ class Group(GroupBase):
 class CollegeCreate(BaseModel):
     collegeId: str = Field(..., description="Unique identifier for the college")
     collegeName: str = Field(..., description="Official name of the college")
-    password: str = Field(..., description="Password for college admin login")
+    email: str = Field(..., description="Official contact email of the college")
     location: Optional[str] = Field(None, description="Physical location/address of the college")
     established: Optional[int] = Field(None, description="Year the college was established", ge=1800, le=datetime.now().year)
     website: Optional[str] = Field(None, description="Official website URL of the college", pattern=r'^https?://.*')
-    email: Optional[str] = Field(None, description="Official contact email of the college")
     phone: Optional[str] = Field(None, description="Contact phone number of the college")
     description: Optional[str] = Field(None, description="Brief description about the college")
     logo_url: Optional[str] = Field(None, description="URL to the college logo image")
@@ -203,6 +201,10 @@ class CollegeCreate(BaseModel):
             }
         }
     )
+
+class CollegeRegistrationRequest(BaseModel):
+    college: CollegeCreate
+    admin_password: str = Field(..., description="Password for college admin login")
 
 # Utility Functions
 def verify_password(plain_password, hashed_password):
@@ -292,6 +294,7 @@ def custom_openapi():
         ("/admins/{admin_id}", "delete"),
         ("/groups/{group_id}", "get"),
         ("/groups/{group_id}/members", "post"),
+        ("/achievements/", "post"),
     }
     for path, methods in openapi_schema["paths"].items():
         for method in methods:
@@ -371,29 +374,40 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# API Endpoints
 @app.post("/colleges/")
-async def create_college(college: CollegeCreate):
+async def create_college(request: CollegeRegistrationRequest):
     saas_db = client["SaaS_Management"]
+    college = request.college
+    admin_password = request.admin_password
+
     existing_college = await saas_db.colleges.find_one({"collegeId": college.collegeId})
-      # Print the existing college objec
     if existing_college:
         raise HTTPException(status_code=400, detail="College already exists")
     existing_college_name = await saas_db.colleges.find_one({"collegeName": college.collegeName})
     if existing_college_name:
         raise HTTPException(status_code=400, detail="College Name already exists")
     database_name = f"{college.collegeId}_AlumniConnect"
-    
-    # Convert Pydantic model to dict and add additional fields
+
+    # Prepare college dict (no password)
     college_dict = college.dict(exclude_none=True)
     college_dict["databaseName"] = database_name
-    college_dict["createdAt"] = get_current_time()
     college_dict["status"] = "pending"
-    
-    # Hash the password before storing
-    college_dict["password"] = get_password_hash(college_dict["password"])
-    
+    # Do NOT store password in college_dict
+
     await saas_db.colleges.insert_one(college_dict)
+
+    # Create the admin user in the college's database using college details
+    college_db = client[database_name]
+    admin_obj = AdminCreate(
+        name=college.collegeId,
+        email=college.email,
+        role="Admin",
+        collegeId=college.collegeId,
+        password=admin_password
+    )
+    admin_dict = admin_obj.dict(exclude_none=True)
+    admin_dict["password"] = get_password_hash(admin_dict["password"])
+    await college_db["Admin"].insert_one(admin_dict)
 
     return {"status": "success", "message": f"College {college.collegeName} registration request submitted and pending approval."}
 
@@ -800,7 +814,6 @@ async def get_colleges(status: str = None, search: str = None, skip: int = 0, li
         colleges.append(college)
     return {"colleges": colleges}
     
-    
 @app.post("/colleges/{college_id}/approve")
 async def approve_college(college_id: str):
     saas_db = client["SaaS_Management"]
@@ -825,36 +838,8 @@ async def approve_college(college_id: str):
     await college_db["messages"].create_index([("senderId", 1), ("receiverId", 1), ("timestamp", -1)])
     await college_db["messages"].create_index([("groupId", 1), ("timestamp", -1)])
     await college_db["groups"].create_index([("members", 1)])
-    
-    # --- Add admin user to the college's Admin collection ---
-    # Use the college's registration info for admin
-    admin_email = college.get("email")
-    admin_password = college.get("password")  # Already hashed in registration
-    admin_name = college.get("collegeId")
-    admin_college_id = college.get("collegeId")
-    
-    
-    # Only add if email is present and not already in Admin collection
-    if admin_email:
-        existing_admin = await college_db["Admin"].find_one({"email": admin_email})
-        if not existing_admin:
-            admin_obj = AdminSchema(
-                name=admin_name,
-                email=admin_email,
-                role="Admin",
-                collegeId=admin_college_id,
-                status="offline",
-                lastSeen=None,
-                createdAt=get_current_time(),
-                collegeStatus="approved",
-                permissions=["manage_users", "view_reports"]
-            )
-            admin_dict = admin_obj.dict()
-            admin_dict["password"] = admin_password  # Already hashed
-            await college_db["Admin"].insert_one(admin_dict)
 
     return {"status": "success", "message": f"College {college['collegeName']} approved and collections created."}
-
 
 class CollegeLogin(BaseModel):
     collegeId: str
@@ -867,21 +852,22 @@ async def college_login(credentials: CollegeLogin):
     if not college:
         raise HTTPException(status_code=404, detail="College not found")
     
-    # Check if college has a password field and verify it
-    if "password" not in college or not verify_password(credentials.password, college["password"]):
+    # Get the college's database and fetch the admin user by name (collegeId)
+    college_db = client[college["databaseName"]]
+    admin = await college_db["Admin"].find_one({"name": credentials.collegeId})
+  
+    if not admin or not verify_password(credentials.password, admin["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     # Check if college is approved
-    if college.get("status") != "approved":
-        raise HTTPException(status_code=403, detail="College account is not approved yet")
+   
     
     # Create a token for the college using the utility function
-    
     user_info = {
-        "name": college["collegeName"],
-        "email": college["email"],
+        "name": admin["name"],
+        "email": admin["email"],
         "role": "Admin",
-        "collegeId": college["collegeId"]
+        "collegeId": admin["collegeId"]
     }
     token = create_access_token(user_info, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     
@@ -889,7 +875,6 @@ async def college_login(credentials: CollegeLogin):
         "collegeId": college["collegeId"],
         "collegeName": college["collegeName"],
         "status": college["status"],
-        "databaseName": college["databaseName"]
     }}
 
 
@@ -912,8 +897,7 @@ async def add_admin(
     # Only allow approved Admins to add new admins
     if current_user["role"] != "Admin":
         raise HTTPException(status_code=403, detail="Only admins can add new admins.")
-    if current_user.get("collegeStatus") != "approved":
-        raise HTTPException(status_code=403, detail="College account is not approved yet")
+
 
     college_db = current_user["collegeDb"]
     college_id = current_user["collegeId"]
@@ -945,8 +929,6 @@ async def remove_admin(
     # Only allow approved Admins to remove admins
     if current_user["role"] != "Admin":
         raise HTTPException(status_code=403, detail="Only admins can remove admins.")
-    if current_user.get("collegeStatus") != "approved":
-        raise HTTPException(status_code=403, detail="College account is not approved yet")
 
     college_db = current_user["collegeDb"]
 
@@ -1031,10 +1013,14 @@ async def bulk_register_students(
     
     if current_user["role"] != "Admin":
         raise HTTPException(status_code=403, detail="Only college admins can bulk register students.")
-    if current_user["collegeStatus"]!= "approved":
+    
+    saas_db = client["SaaS_Management"]
+    college_id = current_user["collegeId"]
+    college = await saas_db.colleges.find_one({"collegeId": college_id})
+    
+    if not college or college.get("status") != "approved":
         raise HTTPException(status_code=403, detail="College account is not approved yet")
     college_db = current_user["collegeDb"]
-    college_id = current_user["collegeId"]
     
     # Read the uploaded Excel file into a pandas DataFrame
     contents = await file.read()
@@ -1105,11 +1091,13 @@ async def bulk_register_alumni(
     # Only allow Admins
     if current_user["role"] != "Admin":
         raise HTTPException(status_code=403, detail="Only college admins can bulk register alumni.")
-    if current_user["collegeStatus"] != "approved":
+    saas_db = client["SaaS_Management"]
+    college_id = current_user["collegeId"]
+    college = await saas_db.colleges.find_one({"collegeId": college_id})
+    if not college or college.get("status") != "approved":
         raise HTTPException(status_code=403, detail="College account is not approved yet")
     college_db = current_user["collegeDb"]
-    college_id = current_user["collegeId"]
-
+    
     # Read the uploaded Excel file into a pandas DataFrame
     contents = await file.read()
     df = pd.read_excel(io.BytesIO(contents))
@@ -1171,3 +1159,52 @@ async def bulk_register_alumni(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=alumni_with_passwords.xlsx"}
     )
+
+from fastapi import UploadFile, File, Form
+import os
+from uuid import uuid4
+
+@app.post("/achievements/")
+async def create_achievement(
+    title: str = Form(...),
+    body: str = Form(...),
+    photo: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only admins can add achievements.")
+
+    college_db = current_user["collegeDb"]
+    college_name = current_user.get("collegeName") or current_user.get("collegeId")
+  
+    safe_college_name = str(college_name).replace(" ", "_")
+
+ 
+    uploads_dir = os.path.join("data", safe_college_name, "photos")
+    os.makedirs(uploads_dir, exist_ok=True)
+    file_ext = os.path.splitext(photo.filename)[1]
+    unique_filename = f"{uuid4().hex}{file_ext}"
+    file_path = os.path.join(uploads_dir, unique_filename)
+
+    with open(file_path, "wb") as buffer:
+        buffer.write(await photo.read())
+
+    # Store the relative path for later retrieval
+    photo_url = f"/{uploads_dir.replace(os.sep, '/')}/{unique_filename}"
+
+    achievement_doc = {
+        "title": title,
+        "body": body,
+        "photo_url": photo_url,
+        "createdBy": {
+            "user_id": str(current_user["_id"]),
+            "name": current_user["name"],
+            "role": current_user["role"],
+            "collegeId": current_user["collegeId"]
+        },
+        "createdAt": get_current_time()
+    }
+
+    result = await college_db["achievements"].insert_one(achievement_doc)
+    achievement_doc["_id"] = str(result.inserted_id)
+    return {"status": "success", "achievement": achievement_doc}

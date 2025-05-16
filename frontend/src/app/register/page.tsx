@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Header from '../components/landingpage/Header'
+import { delay } from 'framer-motion/dom';
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -51,16 +52,55 @@ export default function RegisterForm() {
     }
 
     try {
-      // TODO: Implement actual registration logic here
-      console.log('Registration attempt:', formData);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // For demo purposes, always succeed
+      // Format departments as array if it's a string
+      const departments = typeof formData.departments === 'string' 
+        ? (formData.departments as string).split(',').map(d => d.trim()).filter(d => d)
+        : formData.departments;
+
+      // Clean up social media object by removing empty values
+      const social_media = Object.entries(formData.social_media)
+        .reduce((acc, [key, value]) => {
+          if (value) acc[key] = value;
+          return acc;
+        }, {} as Record<string, string>);
+
+      const requestData = {
+        college: {
+          accreditation: formData.accreditation || undefined,
+          collegeId: formData.collegeId.trim(),
+          collegeName: formData.collegeName.trim(),
+          departments: departments.length > 0 ? departments : undefined,
+          description: formData.description || undefined,
+          email: formData.email || undefined,
+          established: formData.established ? parseInt(formData.established) : undefined,
+          location: formData.location || undefined,
+          logo_url: formData.logo_url || undefined,
+          phone: formData.phone || undefined,
+          social_media: Object.keys(social_media).length > 0 ? social_media : undefined,
+          website: formData.website || undefined
+        },
+        admin_password: formData.password
+      };
+
+      const response = await fetch('/api/colleges', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create account');
+      }
+
+      // Redirect to login page after successful registration
+       // Delay for 1 second before redirecting
       router.push('/login');
     } catch (err) {
-      setError('Failed to create account');
+      setError(err instanceof Error ? err.message : 'Failed to create account');
     } finally {
       setIsLoading(false);
     }
