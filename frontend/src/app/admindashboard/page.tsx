@@ -15,21 +15,32 @@ export default function AdminDashboard() {
     { id: 'admins', label: 'Manage Admins', icon: '👥' },
     { id: 'groups', label: 'Manage Groups', icon: '👥' },
     { id: 'events', label: 'Events', icon: '📅' },
+    { id: 'achievement', label: 'Achievement', icon: '🏆' },
+    { id: 'donations', label: 'Donations', icon: '💸' },
     { id: 'notifications', label: 'Notifications', icon: '🔔' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Handle the Excel file upload here
+      console.log('File uploaded:', file.name);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <Header />
+      
+      {/* Add spacing after header */}
+      <div className="h-8"></div>
       
       <div className="flex">
         {/* Sidebar Navigation */}
         <aside className="w-64 bg-white shadow-md h-screen sticky top-100">
           <div className="p-7">
             <div className="flex items-center space-x-2 mb-6">
-              <Image src="/logo.png" alt="Logo" width={40} height={40} />
-              <span className="text-xl font-bold text-black">Admin Panel</span>
             </div>
             
             <nav className="space-y-2">
@@ -48,7 +59,7 @@ export default function AdminDashboard() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-12">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-black">
               {navigationItems.find(item => item.id === activeTab)?.label}
@@ -56,30 +67,56 @@ export default function AdminDashboard() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h3 className="text-lg font-semibold mb-2 text-black">Add New Student</h3>
-              <p className="text-black mb-4">Register a new student to the system</p>
-              <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                Add Student
-              </button>
+              <div className="space-y-3">
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                  Add Student
+                </button>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="excel-upload"
+                  />
+                  <label
+                    htmlFor="excel-upload"
+                    className="w-full cursor-pointer bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors inline-block text-center"
+                  >
+                    Upload Excel
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h3 className="text-lg font-semibold mb-2 text-black">Add New Alumni</h3>
-              <p className="text-black mb-4">Add a graduated student as alumni</p>
-              <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                Add Alumni
-              </button>
+              <div className="space-y-3">
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                  Add Alumni
+                </button>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="excel-upload"
+                  />
+                  <label
+                    htmlFor="excel-upload"
+                    className="w-full cursor-pointer bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors inline-block text-center"
+                  >
+                    Upload Excel
+                  </label>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h3 className="text-lg font-semibold mb-2 text-black">Create Group</h3>
-              <p className="text-black mb-4">Create a new group for collaboration</p>
-              <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                Create Group
-              </button>
-            </div>
+            
           </div>
 
           {/* Statistics */}
@@ -95,6 +132,18 @@ export default function AdminDashboard() {
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-black mb-2">Total Achievements</h3>
+              <p className="text-3xl font-bold text-black">892</p>
+              <p className="text-sm text-black mt-1">↑ 12% this month</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-black mb-2">Total Donations</h3>
+              <p className="text-3xl font-bold text-black">₹12.5M</p>
+              <p className="text-sm text-black mt-1">↑ 8% this month</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-md">
               <h3 className="text-black mb-2">Active Groups</h3>
               <p className="text-3xl font-bold text-black">42</p>
             </div>
@@ -102,6 +151,18 @@ export default function AdminDashboard() {
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h3 className="text-black mb-2">Upcoming Events</h3>
               <p className="text-3xl font-bold text-black">7</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-black mb-2">Recent Achievements</h3>
+              <p className="text-3xl font-bold text-black">24</p>
+              <p className="text-sm text-black mt-1">This month</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-black mb-2">Recent Donations</h3>
+              <p className="text-3xl font-bold text-black">₹2.8M</p>
+              <p className="text-sm text-black mt-1">This month</p>
             </div>
           </div>
         </main>
