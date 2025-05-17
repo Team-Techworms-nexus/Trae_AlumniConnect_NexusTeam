@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect , Response, Request
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -16,7 +16,7 @@ from pydantic import GetCoreSchemaHandler
 from pydantic_core import core_schema
 import pytz
 import json
-
+import secrets
 from fastapi import Body
 from fastapi import UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -224,6 +224,18 @@ def create_access_token(user: dict, expires_delta: timedelta):
     to_encode["exp"] = int(expire.timestamp())
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+async def verify_csrf(request: Request):
+    # Get CSRF token from cookie
+    csrf_cookie = request.cookies.get("csrf_token")
+    # Get CSRF token from custom header
+    csrf_header = request.headers.get("X-CSRF-Token")
+
+    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF token invalid or missing"
+        )
+
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=401,
@@ -411,11 +423,13 @@ async def create_college(request: CollegeRegistrationRequest):
 
     return {"status": "success", "message": f"College {college.collegeName} registration request submitted and pending approval."}
 
+
+
+
 @app.post("/login")
-async def login(credentials: LoginSchema, collegeId: str):
+async def login(credentials: LoginSchema, collegeId: str, response: Response):
     saas_db = client["SaaS_Management"]
     college = await saas_db["colleges"].find_one({"collegeId": collegeId})
-    print(college)
     if not college:
         raise HTTPException(status_code=404, detail="College not found")
 
@@ -430,10 +444,40 @@ async def login(credentials: LoginSchema, collegeId: str):
         {"_id": user["_id"]},
         {"$set": {"lastSeen": get_current_time(), "status": "online"}}
     )
+
     user["_id"] = str(user["_id"])
     token = create_access_token(user, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     del user["password"]
-    return {"token": token, "user_info": user}
+
+    # Generate a secure random CSRF token
+    csrf_token = secrets.token_urlsafe(32)
+
+    # Set the JWT as HttpOnly, Secure cookie
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {token}",
+        httponly=True,
+        secure=True,         # Set True in production
+        samesite="Strict",   # Or "Lax" depending on your needs
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+
+    # Set CSRF token cookie (readable by JS, so no httponly)
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,
+        secure=True,
+        samesite="Strict",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+
+    # Also return CSRF token in JSON response for frontend to read and send as header
+    return {
+        "user_info": user,
+        "csrf_token": csrf_token
+    }
+
 
 @app.post("/register")
 async def register(user: UserCreate, collegeId: str):
@@ -795,7 +839,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = No
 
 
 @app.get("/colleges/")
-async def get_colleges(status: str = None, search: str = None, skip: int = 0, limit: int = 100, current_user: dict = Depends(get_current_user)):
+async def get_colleges(status: str = None, search: str = None, skip: int = 0, limit: int = 100, current_user: dict = Depends(get_current_user),_: str = Depends(verify_csrf)):
     # Only allow superadmin (global admin) to access this endpoint
     
     
@@ -845,24 +889,28 @@ class CollegeLogin(BaseModel):
     collegeId: str
     password: str
 
+from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
+from datetime import timedelta
+import secrets
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 60  # or your desired value
+
 @app.post("/college-login")
 async def college_login(credentials: CollegeLogin):
     saas_db = client["SaaS_Management"]
     college = await saas_db["colleges"].find_one({"collegeId": credentials.collegeId})
+    
     if not college:
         raise HTTPException(status_code=404, detail="College not found")
     
-    # Get the college's database and fetch the admin user by name (collegeId)
     college_db = client[college["databaseName"]]
     admin = await college_db["Admin"].find_one({"name": credentials.collegeId})
-  
+    
     if not admin or not verify_password(credentials.password, admin["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    # Check if college is approved
-   
-    
-    # Create a token for the college using the utility function
+
+    # Create JWT payload
     user_info = {
         "name": admin["name"],
         "email": admin["email"],
@@ -870,12 +918,41 @@ async def college_login(credentials: CollegeLogin):
         "collegeId": admin["collegeId"]
     }
     token = create_access_token(user_info, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    
-    return {"token": token, "college_info": {
-        "collegeId": college["collegeId"],
-        "collegeName": college["collegeName"],
-        "status": college["status"],
-    }}
+
+    # Generate CSRF token
+    csrf_token = secrets.token_urlsafe(32)
+
+    # Prepare the response
+    response = JSONResponse(content={
+        "college_info": {
+            "collegeId": college["collegeId"],
+            "collegeName": college["collegeName"],
+            "status": college["status"],
+        },
+        "csrf_token": csrf_token  # Also send in body so frontend can use in headers
+    })
+
+    # Set access token as HttpOnly cookie
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {token}",
+        httponly=True,
+        secure=True,
+        samesite="Strict",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+
+    # Set CSRF token (non-HttpOnly so frontend can read it)
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        secure=True,
+        samesite="Strict",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+
+    return response
+
 
 
 @app.get("/admins/")
