@@ -224,7 +224,7 @@ def create_access_token(user: dict, expires_delta: timedelta):
     to_encode["exp"] = int(expire.timestamp())
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-async def verify_csrf(request: Request):
+async def verify_csrf(request: Request):    
     # Get CSRF token from cookie
     csrf_cookie = request.cookies.get("csrf_token")
     # Get CSRF token from custom header
@@ -522,7 +522,7 @@ async def read_users_me(current_user: dict = Depends(get_current_user)):
 
 
 @app.get("/users/{user_id}")
-async def get_user_profile(user_id: str, current_user: dict = Depends(get_current_user)):
+async def get_user_profile(user_id: str, current_user: dict = Depends(get_current_user),_: str = Depends(verify_csrf)):
     """
     Fetch profile details of another user by their ID.
     The user_id must be a valid ObjectId.
