@@ -11,55 +11,71 @@ export default function LoginForm() {
   const [userType, setUserType] = useState<'student' | 'admin' | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const [studentFormData, setStudentFormData] = useState({
-    email: '',
+    collegeId: '',
     password: '',
   });
-  const [adminFormData, setAdminFormData] = useState({
-    email: '',
-    password: '',
-  });
+  const [adminFormData, setAdminFormData] = useState({ collegeId: '', password: '' });
+
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent, formType: 'student' | 'admin') => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError('');
+  const handleSubmit = async (
+  e: React.FormEvent,
+  formType: 'student' | 'admin'
+) => {
+  e.preventDefault();
+  setIsLoading(true);
+  setError('');
 
-    try {
-      const formData = formType === 'student' ? studentFormData : adminFormData;
-      console.log('Login attempt:', { ...formData, userType: formType });
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Redirect based on user type
-      if (formType === 'student') {
-        router.push('/dashboard');
-      } else {
-        router.push('/admindashboard');
-      }
-    } catch (err) {
-      setError('Invalid email or password');
-    } finally {
-      setIsLoading(false);
+  try {
+    const formData = formType === 'student' ? studentFormData : adminFormData;
+
+    const endpoint = formType === 'student' ? '/login' : '/college-login';
+
+    const response = await fetch(`http://localhost:8000${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(formData),
+      credentials: 'include', // important for cookies if you're setting session tokens
+    });
+
+    if (!response.ok) throw new Error('Login failed');
+    const data = await response.json();
+
+    // ✅ Store CSRF token if returned in response
+    if (data.csrf_token) {
+      sessionStorage.setItem('csrf_token', data.csrf_token);
     }
-  };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>, formType: 'student' | 'admin') => {
-    const { name, value } = e.target;
+    // ✅ Redirect based on user type
     if (formType === 'student') {
-      setStudentFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
+      router.push('/dashboard');
     } else {
-      setAdminFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
+      router.push('/admindashboard');
     }
-  };
+  } catch (err) {
+    setError('Invalid credentials. Please try again.');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
+ 
+  const handleChange = (
+  e: React.ChangeEvent<HTMLInputElement>,
+  formType: 'student' | 'admin'
+) => {
+  const { name, value } = e.target;
+  if (formType === 'student') {
+    setStudentFormData((prev) => ({ ...prev, [name]: value }));
+  } else {
+    setAdminFormData((prev) => ({ ...prev, [name]: value }));
+  }
+};
+
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -140,19 +156,19 @@ export default function LoginForm() {
 
                 <form onSubmit={(e) => handleSubmit(e, userType)} className="space-y-6">
                   <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                      Email
+                    <label htmlFor="CollegeID" className="block text-sm font-medium text-gray-700 mb-2">
+                      CollegeID
                     </label>
                     <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
+                      id="collegeId"
+                      name="collegeId"
+                      type="text"
+                      
                       required
-                      value={userType === 'student' ? studentFormData.email : adminFormData.email}
+                      value={userType === 'student' ? studentFormData.collegeId : adminFormData.collegeId}
                       onChange={(e) => handleChange(e, userType)}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Enter your email"
+                      placeholder="Enter your CollegeID"
                     />
                   </div>
 
