@@ -14,6 +14,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import core_schema
+from fastapi.openapi.docs import get_swagger_ui_html
 import pytz
 import json
 import secrets
@@ -82,6 +83,11 @@ class UserCreate(UserBase):
 
 class StudentSchema(UserBase):
     rollno: Optional[str] = None
+    contact_number : Optional[str] = None
+    linkedin: Optional[str] = None
+    github: Optional[str] = None
+    description: Optional[str] = None
+    
     prn: Optional[str] = None
     gradYear: Optional[int] = None
     degree: Optional[str] = None
@@ -115,6 +121,7 @@ class User(UserBase):
     )
 
 class LoginSchema(BaseModel):
+    collegeId: str
     email: str
     password: str
     userType: str
@@ -224,13 +231,15 @@ def create_access_token(user: dict, expires_delta: timedelta):
     to_encode["exp"] = int(expire.timestamp())
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-async def verify_csrf(request: Request):    
-    # Get CSRF token from cookie
-    csrf_cookie = request.cookies.get("csrf_token")
-    # Get CSRF token from custom header
-    csrf_header = request.headers.get("X-CSRF-Token")
+from fastapi import Request, Header, HTTPException, status
 
-    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+async def verify_csrf(
+    request: Request,
+    csrf_header: str = Header(..., alias="X-CSRF-Token")
+):
+    csrf_cookie = request.cookies.get("csrf_token")
+
+    if not csrf_cookie or csrf_cookie != csrf_header:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="CSRF token invalid or missing"
@@ -318,14 +327,17 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
+
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 
 # WebSocket Manager
 class ConnectionManager:
@@ -427,9 +439,9 @@ async def create_college(request: CollegeRegistrationRequest):
 
 
 @app.post("/login")
-async def login(credentials: LoginSchema, collegeId: str, response: Response):
+async def login(credentials: LoginSchema, response: Response):
     saas_db = client["SaaS_Management"]
-    college = await saas_db["colleges"].find_one({"collegeId": collegeId})
+    college = await saas_db["colleges"].find_one({"collegeId": credentials.collegeId})
     if not college:
         raise HTTPException(status_code=404, detail="College not found")
 
@@ -459,7 +471,8 @@ async def login(credentials: LoginSchema, collegeId: str, response: Response):
         httponly=True,
         secure=True,         # Set True in production
         samesite="Strict",   # Or "Lax" depending on your needs
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
     )
 
     # Set CSRF token cookie (readable by JS, so no httponly)
@@ -469,9 +482,10 @@ async def login(credentials: LoginSchema, collegeId: str, response: Response):
         httponly=False,
         secure=True,
         samesite="Strict",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
     )
-
+    
     # Also return CSRF token in JSON response for frontend to read and send as header
     return {
         "user_info": user,
@@ -950,7 +964,7 @@ async def college_login(credentials: CollegeLogin):
         samesite="Strict",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
-
+    print(response)
     return response
 
 
@@ -969,7 +983,8 @@ async def list_admins(current_user: dict = Depends(get_current_user)):
 @app.post("/add-admin/")
 async def add_admin(
     admin: AdminCreate = Body(...),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _: str = Depends(verify_csrf)
 ):
     # Only allow approved Admins to add new admins
     if current_user["role"] != "Admin":
@@ -1001,7 +1016,8 @@ async def add_admin(
 @app.delete("/admins/{admin_id}")
 async def remove_admin(
     admin_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _: str = Depends(verify_csrf)
 ):
     # Only allow approved Admins to remove admins
     if current_user["role"] != "Admin":
@@ -1033,7 +1049,8 @@ async def remove_admin(
 @app.delete("/students/")
 async def remove_students(
     student_ids: List[str] = Body(..., embed=True),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _: str = Depends(verify_csrf)
 ):
     if current_user["role"] != "Admin":
         raise HTTPException(status_code=403, detail="Only admins can remove students.")
@@ -1058,7 +1075,9 @@ async def remove_students(
 @app.delete("/alumni/")
 async def remove_alumni(
     alumni_ids: List[str] = Body(..., embed=True),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _: str = Depends(verify_csrf)
+
 ):
     if current_user["role"] != "Admin":
         raise HTTPException(status_code=403, detail="Only admins can remove alumni.")
@@ -1084,7 +1103,8 @@ async def remove_alumni(
 @app.post("/bulk-register-students/")
 async def bulk_register_students(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _: str = Depends(verify_csrf)
 ):
     # Only allow Admins
     
@@ -1163,7 +1183,8 @@ async def bulk_register_students(
 @app.post("/bulk-register-alumni/")
 async def bulk_register_alumni(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _: str = Depends(verify_csrf)
 ):
     # Only allow Admins
     if current_user["role"] != "Admin":
@@ -1246,7 +1267,9 @@ async def create_achievement(
     title: str = Form(...),
     body: str = Form(...),
     photo: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _: str = Depends(verify_csrf)
+
 ):
     if current_user["role"] != "Admin":
         raise HTTPException(status_code=403, detail="Only admins can add achievements.")

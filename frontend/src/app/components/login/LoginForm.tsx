@@ -12,7 +12,9 @@ export default function LoginForm() {
   const modalRef = useRef<HTMLDivElement>(null);
   const [studentFormData, setStudentFormData] = useState({
     collegeId: '',
+    email: '',
     password: '',
+    userType: '',
   });
   const [adminFormData, setAdminFormData] = useState({ collegeId: '', password: '' });
 
@@ -29,34 +31,42 @@ export default function LoginForm() {
 
   try {
     const formData = formType === 'student' ? studentFormData : adminFormData;
-
-    const endpoint = formType === 'student' ? '/login' : '/college-login';
-
-    const response = await fetch(`http://localhost:8000${endpoint}`, {
-      method: 'POST',
+    const method = formType === 'student' ? 'POST' : 'PUT';
+  
+    const fastapiUrl =
+      formType === 'student'
+        ? 'http://localhost:8000/login'
+        : 'http://localhost:8000/college-login';
+    console.log('Form data:', formData);
+    console.log('FastAPI URL:', fastapiUrl);
+    const response = await fetch(fastapiUrl, {
+      method: 'POST', // FastAPI expects POST for both
+      credentials: 'include', // ✅ Allow cookies
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(formData),
-      credentials: 'include', // important for cookies if you're setting session tokens
     });
-
-    if (!response.ok) throw new Error('Login failed');
+  
     const data = await response.json();
-
-    // ✅ Store CSRF token if returned in response
+  
+    // Store CSRF token from response
     if (data.csrf_token) {
       sessionStorage.setItem('csrf_token', data.csrf_token);
     }
-
-    // ✅ Redirect based on user type
+  
+    if (!response.ok) {
+      throw new Error(data.error || 'Login failed');
+    }
+  
+    // Redirect based on user type
     if (formType === 'student') {
       router.push('/dashboard');
     } else {
       router.push('/admindashboard');
     }
   } catch (err) {
-    setError('Invalid credentials. Please try again.');
+    setError(err instanceof Error ? err.message : 'An error occurred');
   } finally {
     setIsLoading(false);
   }
@@ -75,6 +85,14 @@ export default function LoginForm() {
     setAdminFormData((prev) => ({ ...prev, [name]: value }));
   }
 };
+
+  const handleRoleSelect = (selectedRole: string) => {
+    setStudentFormData(prev => ({
+      ...prev,
+      userType: selectedRole
+    }));
+    console.log('Role selected:', selectedRole); // Add logging to debug
+  };
 
 
   useEffect(() => {
@@ -145,7 +163,7 @@ export default function LoginForm() {
             <div className="fixed inset-0 backdrop-blur-md bg-white/30 flex items-center justify-center z-50">
               <div 
                 ref={modalRef}
-                className="bg-white rounded-2xl p-8 w-full max-w-md shadow-xl mx-auto my-auto"
+                className="bg-white rounded-2xl p-8 w-full max-w-md shadow-xl mx-auto my-auto overflow-y-auto max-h-[90vh]"
               >
                 <div className="text-center mb-8">
                   <Image src="/logo.png" alt="Net4Grad Logo" width={64} height={64} className="mx-auto mb-4" />
@@ -156,14 +174,13 @@ export default function LoginForm() {
 
                 <form onSubmit={(e) => handleSubmit(e, userType)} className="space-y-6">
                   <div>
-                    <label htmlFor="CollegeID" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label htmlFor="collegeId" className="block text-sm font-medium text-gray-700 mb-2">
                       CollegeID
                     </label>
                     <input
                       id="collegeId"
                       name="collegeId"
                       type="text"
-                      
                       required
                       value={userType === 'student' ? studentFormData.collegeId : adminFormData.collegeId}
                       onChange={(e) => handleChange(e, userType)}
@@ -171,6 +188,24 @@ export default function LoginForm() {
                       placeholder="Enter your CollegeID"
                     />
                   </div>
+
+                  {userType === 'student' && (
+                    <div>
+                      <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                        Email
+                      </label>
+                      <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        required
+                        value={studentFormData.email}
+                        onChange={(e) => handleChange(e, 'student')}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter your email"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
@@ -188,6 +223,44 @@ export default function LoginForm() {
                       placeholder="Enter your password"
                     />
                   </div>
+                  
+                  {userType === 'student' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select Role
+                      </label>
+                      <div className="grid grid-cols-2 gap-3 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleRoleSelect('Student')}
+                          className={`flex flex-col items-center justify-center p-3 border ${studentFormData.userType === 'Student' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} rounded-lg transition-all duration-200 hover:border-blue-300`}
+                        >
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${studentFormData.userType === 'Student' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <span className="text-sm font-medium">Student</span>
+                        </button>
+                        
+                        <button
+                          type="button"
+                          onClick={() => handleRoleSelect('Alumni')}
+                          className={`flex flex-col items-center justify-center p-3 border ${studentFormData.userType === 'Alumni' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} rounded-lg transition-all duration-200 hover:border-blue-300`}
+                        >
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${studentFormData.userType === 'Alumni' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                              <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z" />
+                            </svg>
+                          </div>
+                          <span className="text-sm font-medium">Alumni</span>
+                        </button>
+                      </div>
+                      {!studentFormData.userType && (
+                        <p className="text-xs text-red-500 mt-1">Please select a role</p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
