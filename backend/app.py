@@ -33,7 +33,7 @@ client = AsyncIOMotorClient(MONGODB_URL)
 # Security
 SECRET_KEY = os.getenv("SECRET_KEY", "mMZc9YSrVzHixbquDEbROVhE2VvxYgrQbJAP91UYfPk=")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 3000
+ACCESS_TOKEN_EXPIRE_MINUTES = 30000
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -77,6 +77,24 @@ class UserBase(BaseModel):
     createdAt: Optional[datetime] = Field(default_factory=get_current_time)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+class CollegeMeta(BaseModel):
+    total_students: int = 0
+    total_alumni: int = 0
+    total_achievements: int = 0
+    total_donations: float = 0
+    donations_growth_percent: float = 0
+    achievements_growth_percent: float = 0
+    active_groups: int = 0
+    upcoming_events: int = 0
+    recent_achievements: int = 0
+    recent_donations: float = 0
+    last_updated: datetime = Field(default_factory=get_current_time)
+
+    model_config = ConfigDict(
+        json_encoders={ObjectId: str},
+        populate_by_name=True
+    )
 
 class UserCreate(UserBase):
     password: str  # Only required for registration
@@ -245,7 +263,15 @@ async def verify_csrf(
             detail="CSRF token invalid or missing"
         )
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+
+
+async def get_token_from_cookie(request: Request) -> str:
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return token
+
+async def get_current_user(token: str = Depends(get_token_from_cookie)):
     credentials_exception = HTTPException(
         status_code=401,
         detail="Could not validate credentials",
@@ -316,6 +342,7 @@ def custom_openapi():
         ("/groups/{group_id}", "get"),
         ("/groups/{group_id}/members", "post"),
         ("/achievements/", "post"),
+        ("/students/","get"),
     }
     for path, methods in openapi_schema["paths"].items():
         for method in methods:
@@ -398,6 +425,12 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+async def initialize_college_meta(college_db):
+    """Initialize the meta collection for a new college"""
+    meta = CollegeMeta().dict()
+    await college_db["meta"].insert_one(meta)
+    return meta
+
 @app.post("/colleges/")
 async def create_college(request: CollegeRegistrationRequest):
     saas_db = client["SaaS_Management"]
@@ -432,6 +465,9 @@ async def create_college(request: CollegeRegistrationRequest):
     admin_dict = admin_obj.dict(exclude_none=True)
     admin_dict["password"] = get_password_hash(admin_dict["password"])
     await college_db["Admin"].insert_one(admin_dict)
+    
+    # Initialize meta collection
+    await initialize_college_meta(college_db)
 
     return {"status": "success", "message": f"College {college.collegeName} registration request submitted and pending approval."}
 
@@ -493,6 +529,70 @@ async def login(credentials: LoginSchema, response: Response):
     }
 
 
+async def update_college_meta(college_db, update_type, count=1):
+    """Update meta collection statistics"""
+    meta = await college_db["meta"].find_one({})
+    if not meta:
+        meta = await initialize_college_meta(college_db)
+    
+    updates = {}
+    current_time = get_current_time()
+    current_month = current_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    if update_type == "student":
+        updates["total_students"] = meta["total_students"] + count
+    elif update_type == "alumni":
+        updates["total_alumni"] = meta["total_alumni"] + count
+    elif update_type == "achievement":
+        updates["total_achievements"] = meta["total_achievements"] + count
+        updates["recent_achievements"] = meta.get("recent_achievements", 0) + count
+        
+        # Calculate growth percentage
+        last_month = (current_month.replace(day=1) - timedelta(days=1)).replace(day=1)
+        last_month_achievements = await college_db["achievements"].count_documents({
+            "createdAt": {"$gte": last_month, "$lt": current_month}
+        })
+        current_month_achievements = await college_db["achievements"].count_documents({
+            "createdAt": {"$gte": current_month}
+        })
+        
+        if last_month_achievements > 0:
+            growth = ((current_month_achievements - last_month_achievements) / last_month_achievements) * 100
+            updates["achievements_growth_percent"] = growth
+    elif update_type == "donation":
+        amount = count  # In this case, count is the donation amount
+        updates["total_donations"] = meta["total_donations"] + amount
+        updates["recent_donations"] = meta.get("recent_donations", 0) + amount
+        
+        # Calculate growth percentage
+        last_month = (current_month.replace(day=1) - timedelta(days=1)).replace(day=1)
+        last_month_donations = await college_db["donations"].aggregate([
+            {"$match": {"createdAt": {"$gte": last_month, "$lt": current_month}}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]).to_list(length=1)
+        
+        current_month_donations = await college_db["donations"].aggregate([
+            {"$match": {"createdAt": {"$gte": current_month}}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]).to_list(length=1)
+        
+        last_month_total = last_month_donations[0]["total"] if last_month_donations else 0
+        current_month_total = current_month_donations[0]["total"] if current_month_donations else 0
+        
+        if last_month_total > 0:
+            growth = ((current_month_total - last_month_total) / last_month_total) * 100
+            updates["donations_growth_percent"] = growth
+    elif update_type == "group":
+        updates["active_groups"] = await college_db["groups"].count_documents({"status": "active"})
+    elif update_type == "event":
+        updates["upcoming_events"] = await college_db["events"].count_documents({
+            "eventDate": {"$gte": current_time}
+        })
+    
+    updates["last_updated"] = current_time
+    
+    await college_db["meta"].update_one({}, {"$set": updates})
+
 @app.post("/register")
 async def register(user: UserCreate, collegeId: str):
     saas_db = client["SaaS_Management"]
@@ -523,6 +623,13 @@ async def register(user: UserCreate, collegeId: str):
     user_dict["lastSeen"] = get_current_time()
 
     result = await college_db[role].insert_one(user_dict)
+    
+    # Update meta collection
+    if role == "Student":
+        await update_college_meta(college_db, "student")
+    elif role == "Alumni":
+        await update_college_meta(college_db, "alumni")
+    
     new_user = await college_db[role].find_one({"_id": result.inserted_id})
     new_user["_id"] = str(new_user["_id"])
     del new_user["password"]
@@ -924,6 +1031,11 @@ async def college_login(credentials: CollegeLogin):
     if not admin or not verify_password(credentials.password, admin["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    await college_db["Admin"].update_one(
+        {"_id": admin["_id"]},
+        {"$set": {"lastSeen": get_current_time(), "status": "online"}}
+    )
+
     # Create JWT payload
     user_info = {
         "name": admin["name"],
@@ -949,7 +1061,7 @@ async def college_login(credentials: CollegeLogin):
     # Set access token as HttpOnly cookie
     response.set_cookie(
         key="access_token",
-        value=f"Bearer {token}",
+        value=token,
         httponly=True,
         secure=True,
         samesite="Strict",
@@ -1133,6 +1245,9 @@ async def bulk_register_students(
     # Prepare results for Excel output
     passwords = []
     statuses = []
+    
+    # Track number of successfully created students
+    created_count = 0
 
     for idx, row in df.iterrows():
         rollno = str(row['rollno']).strip()
@@ -1162,10 +1277,15 @@ async def bulk_register_students(
         await college_db["Student"].insert_one(student_dict)
         passwords.append(password)
         statuses.append("Created")
+        created_count += 1
 
     # Add password and status columns to DataFrame
     df['password'] = passwords
     df['status'] = statuses
+    
+    # Update meta collection with the count of newly created students
+    if created_count > 0:
+        await update_college_meta(college_db, "student", created_count)
 
     # Write the DataFrame to an Excel file in memory
     output = io.BytesIO()
@@ -1179,6 +1299,23 @@ async def bulk_register_students(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=students_with_passwords.xlsx"}
     )
+
+@app.get("/students/", response_model=List[StudentSchema])
+async def get_all_students(current_user: User = Depends(get_current_user)):
+    """
+    Get all students from the college's database.
+    Returns:
+        List[StudentSchema]: List of all student documents
+    """
+    if (current_user["role"] != "Admin"):
+         raise HTTPException(status_code=403, detail="Only college admins can get students data.")
+    college_db = current_user["collegeDb"]
+    students = []
+    projection = {"_id": 1, "name": 1, "email": 1,"department":1,"status":1,"rollno":1,"lastSeen":1}
+    async for student in college_db.Student.find({},projection):
+
+        students.append(StudentSchema(**student))
+    return students
 
 @app.post("/bulk-register-alumni/")
 async def bulk_register_alumni(
@@ -1240,10 +1377,14 @@ async def bulk_register_alumni(
         await college_db["Alumni"].insert_one(alumni_dict)
         passwords.append(password)
         statuses.append("Created")
+        created_count += 1
 
     # Add password and status columns to DataFrame
     df['password'] = passwords
     df['status'] = statuses
+
+    if created_count > 0:
+        await update_college_meta(college_db, "student", created_count)
 
     # Write the DataFrame to an Excel file in memory
     output = io.BytesIO()
@@ -1307,4 +1448,23 @@ async def create_achievement(
 
     result = await college_db["achievements"].insert_one(achievement_doc)
     achievement_doc["_id"] = str(result.inserted_id)
+    
+    # Update meta collection for achievements
+    await update_college_meta(college_db, "achievement")
+    
     return {"status": "success", "achievement": achievement_doc}
+
+@app.get("/college-stats")
+async def get_college_stats(current_user: dict = Depends(get_current_user), _: str = Depends(verify_csrf)):
+    """Get statistics for the college dashboard"""
+    college_db = current_user["collegeDb"]
+    
+    # Get meta data
+    meta = await college_db["meta"].find_one({})
+    if not meta:
+        meta = await initialize_college_meta(college_db)
+    
+    # Convert ObjectId to string
+    meta["_id"] = str(meta["_id"])
+    
+    return meta
