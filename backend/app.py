@@ -27,7 +27,7 @@ import io
 
 
 # MongoDB setup (global client, databases will be selected dynamically)
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://Shreyash:SSpJQXPAlb7dzO74@cluster0.gze09fx.mongodb.net/")
 client = AsyncIOMotorClient(MONGODB_URL)
 
 # Security
@@ -1468,3 +1468,108 @@ async def get_college_stats(current_user: dict = Depends(get_current_user), _: s
     meta["_id"] = str(meta["_id"])
     
     return meta
+
+@app.get("/alumni/", response_model=List[AlumniSchema])
+async def get_all_alumni(current_user: User = Depends(get_current_user)):
+    """
+    Get all alumni from the college's database.
+    Returns:
+        List[AlumniSchema]: List of all alumni documents
+    """
+    if (current_user["role"] != "Admin"):
+         raise HTTPException(status_code=403, detail="Only college admins can get alumni data.")
+    college_db = current_user["collegeDb"]
+    alumni = []
+    projection = {"_id": 1, "name": 1, "email": 1, "department": 1, "status": 1, "prn": 1, "gradYear": 1, "currentRole": 1, "lastSeen": 1}
+    async for alum in college_db.Alumni.find({}, projection):
+        alumni.append(AlumniSchema(**alum))
+    return alumni
+
+@app.post("/add-student/")
+async def add_student(
+    student: StudentSchema,
+    current_user: dict = Depends(get_current_user),
+    _: str = Depends(verify_csrf)
+):
+    # Only allow Admins
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only college admins can add students.")
+    
+    college_db = current_user["collegeDb"]
+    college_id = current_user["collegeId"]
+    
+    # Check if student already exists
+    existing = await college_db["Student"].find_one({"email": student.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Student with this email already exists.")
+    
+    # Generate a random password
+    password = str(random.randint(100000, 999999))
+    
+    # Prepare student dict
+    student_dict = student.dict(exclude_none=True)
+    student_dict["role"] = "Student"
+    student_dict["collegeId"] = college_id
+    student_dict["status"] = "offline"
+    student_dict["createdAt"] = get_current_time()
+    student_dict["password"] = get_password_hash(password)
+    
+    result = await college_db["Student"].insert_one(student_dict)
+    
+    # Update meta collection
+    await update_college_meta(college_db, "student", 1)
+    
+    # Return the created student with password
+    student_dict["_id"] = str(result.inserted_id)
+    student_dict["password"] = password  # Return the plain password for admin to share
+    
+    return {
+        "status": "success",
+        "message": "Student added successfully",
+        "student": student_dict
+    }
+
+@app.post("/add-alumni/")
+async def add_alumni(
+    alumni: AlumniSchema,
+    current_user: dict = Depends(get_current_user),
+    _: str = Depends(verify_csrf)
+):
+    # Only allow Admins
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only college admins can add alumni.")
+    
+    college_db = current_user["collegeDb"]
+    college_id = current_user["collegeId"]
+    
+    # Check if alumni already exists
+    existing = await college_db["Alumni"].find_one({"email": alumni.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Alumni with this email already exists.")
+    
+    # Generate a random password
+    password = str(random.randint(100000, 999999))
+    
+    # Prepare alumni dict
+    alumni_dict = alumni.dict(exclude_none=True)
+    alumni_dict["role"] = "Alumni"
+    alumni_dict["collegeId"] = college_id
+    alumni_dict["status"] = "offline"
+    alumni_dict["createdAt"] = get_current_time()
+    alumni_dict["password"] = get_password_hash(password)
+    
+    result = await college_db["Alumni"].insert_one(alumni_dict)
+    
+    # Update meta collection
+    await update_college_meta(college_db, "alumni", 1)
+    
+    # Return the created alumni with password
+    alumni_dict["_id"] = str(result.inserted_id)
+    alumni_dict["password"] = password  # Return the plain password for admin to share
+    
+    return {
+        "status": "success",
+        "message": "Alumni added successfully",
+        "alumni": alumni_dict
+    }
+
