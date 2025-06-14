@@ -368,7 +368,8 @@ export default function StudentDashboard() {
     { id: 'profile', label: 'Profile', icon: '👤' },
     { id: 'events', label: 'Events', icon: '📅' },
     { id: 'achievements', label: 'Achievements', icon: '🏆' },
-    { id: 'donations', label: 'Donations', icon: '💰' }
+    { id: 'donations', label: 'Donations', icon: '💰' },
+    { id: 'directory', label: 'Directory', icon: '👥', href: '/directory' }
   ];
 
   return (
@@ -439,9 +440,9 @@ export default function StudentDashboard() {
                   {navigationItems.map(item => (
                     <button
                       key={item.id}
-                      onClick={() => setActiveTab(item.id)}
+                      onClick={() => item.href ? window.location.href = item.href : setActiveTab(item.id)}
                       className={`w-full flex items-center justify-${isSidebarCollapsed ? 'center' : 'between'} px-4 py-3 rounded-xl transition-all duration-200 group ${
-                        activeTab === item.id 
+                        activeTab === item.id && !item.href
                           ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30 transform scale-105' 
                           : 'text-gray-700 hover:bg-gray-50'
                       }`}
@@ -539,7 +540,6 @@ export default function StudentDashboard() {
       </div>
     </div>
   )}
-// ... existing code ...
               {/* Events Content */}  
 
               {activeTab === 'profile' && (
