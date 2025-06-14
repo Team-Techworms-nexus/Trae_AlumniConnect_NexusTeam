@@ -82,7 +82,7 @@ export default function RegisterForm() {
         admin_password: formData.password
       };
 
-      const response = await fetch('http://localhost:8000/colleges', {
+      const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/colleges', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

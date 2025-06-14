@@ -173,7 +173,7 @@ export default function StudentDashboard() {
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const response = await fetch('http://localhost:8000/users/me', {
+        const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/users/me', {
           credentials: 'include',
           headers: {
             'X-CSRF-Token': sessionStorage.getItem('csrf_token') || ''
@@ -211,7 +211,7 @@ export default function StudentDashboard() {
     if (!editForm) return;
     
     try {
-      const response = await fetch('http://localhost:8000/users/me', {
+      const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/users/me', {
         method: 'PUT',
         credentials: 'include',
         headers: {
@@ -236,7 +236,7 @@ export default function StudentDashboard() {
 
   const handleAddExperience = async (newExperience: any) => {
     try {
-      const response = await fetch('http://localhost:8000/users/me/experience', {
+      const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/users/me/experience', {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -263,7 +263,7 @@ export default function StudentDashboard() {
 
   const handleAddSkill = async (newSkill: string) => {
     try {
-      const response = await fetch('http://localhost:8000/users/me/skills', {
+      const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/users/me/skills', {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -301,7 +301,7 @@ export default function StudentDashboard() {
       // For demo purposes, using demo data instead of API call
       setAchievements(demoAchievements);
       // Uncomment below for actual API integration
-      const response = await fetch('http://localhost:8000/achievements', {
+      const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/achievements', {
         credentials: 'include',
         headers: {
           'X-CSRF-Token': sessionStorage.getItem('csrf_token') || ''
@@ -319,7 +319,7 @@ export default function StudentDashboard() {
 
   const handleCreateAchievement = async () => {
     try {
-      const response = await fetch('http://localhost:8000/achievements', {
+      const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/achievements', {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -348,7 +348,7 @@ export default function StudentDashboard() {
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/events', {
+      const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/events', {
         credentials: 'include',
         headers: {
           'X-CSRF-Token': sessionStorage.getItem('csrf_token') || ''

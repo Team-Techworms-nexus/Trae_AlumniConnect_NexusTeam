@@ -80,7 +80,7 @@ useEffect(() => {
         setLoading(true);
         const csrfToken = sessionStorage.getItem('csrf_token');
         
-        const response = await fetch('http://localhost:8000/college-stats', {
+        const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/college-stats', {
           method: 'GET',
           credentials: 'include',
           headers: {

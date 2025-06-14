@@ -35,8 +35,8 @@ export default function LoginForm() {
   
     const fastapiUrl =
       formType === 'student'
-        ? 'http://localhost:8000/login'
-        : 'http://localhost:8000/college-login';
+        ? 'https://trae-nexusteam-alumniconnect.onrender.com/login'
+        : 'https://trae-nexusteam-alumniconnect.onrender.com/college-login';
     console.log('Form data:', formData);
     console.log('FastAPI URL:', fastapiUrl);
     const response = await fetch(fastapiUrl, {

@@ -359,7 +359,7 @@ app.openapi = custom_openapi
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -595,9 +595,6 @@ async def update_college_meta(college_db, update_type, count=1):
     
     await college_db["meta"].update_one({}, {"$set": updates})
 
-from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel
-import secrets
 
 class SuperAdminLoginSchema(BaseModel):
     username: str
@@ -1183,9 +1180,7 @@ async def approve_college(college_id: str, current_user: dict = Depends(get_curr
         print(f"All collections created successfully for {college['databaseName']}")
     except Exception as e:
         print(f"Error creating collections: {e}")
-        # You might want to revert the approval status if collection creation fails
-        # await SaaS_Management.colleges.update_one({"collegeId": college_id}, {"$set": {"status": "pending"}})
-        # raise HTTPException(status_code=500, detail=f"Error creating collections: {str(e)}")
+      
 
     return {"message": "College approved successfully"}
 

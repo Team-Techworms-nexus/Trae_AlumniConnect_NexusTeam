@@ -45,7 +45,7 @@ export default function SuperAdminDashboard() {
   const fetchColleges = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/colleges/', {
+      const response = await fetch('https://trae-nexusteam-alumniconnect.onrender.com/colleges/', {
         credentials: 'include',
         headers: {
           'X-CSRF-Token': getCsrfToken(),
@@ -67,7 +67,7 @@ export default function SuperAdminDashboard() {
 
   const handleApproveCollege = async (collegeId: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/colleges/${collegeId}/approve`, {
+      const response = await fetch(`https://trae-nexusteam-alumniconnect.onrender.com/colleges/${collegeId}/approve`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -88,7 +88,7 @@ export default function SuperAdminDashboard() {
 
   const handleRejectCollege = async (collegeId: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/colleges/${collegeId}/reject`, {
+      const response = await fetch(`https://trae-nexusteam-alumniconnect.onrender.com/colleges/${collegeId}/reject`, {
         method: 'POST',
         credentials: 'include',
         headers: {
