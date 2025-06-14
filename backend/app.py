@@ -33,7 +33,7 @@ MONGODB_URL = os.getenv("MONGODB_URL")
 client = AsyncIOMotorClient(MONGODB_URL)
 
 # Security
-SECRET_KEY = os.getenv("SECRET_KEY", "mMZc9YSrVzHixbquDEbROVhE2VvxYgrQbJAP91UYfPk=")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30000
 
