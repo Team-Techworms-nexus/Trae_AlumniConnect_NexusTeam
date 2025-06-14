@@ -503,7 +503,7 @@ async def login(credentials: LoginSchema, response: Response):
     # Set the JWT as HttpOnly, Secure cookie
     response.set_cookie(
         key="access_token",
-        value=f"Bearer {token}",
+        value=token,
         httponly=True,
         secure=True,         # Set True in production
         samesite="Strict",   # Or "Lax" depending on your needs
