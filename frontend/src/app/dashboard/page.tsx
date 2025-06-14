@@ -14,6 +14,17 @@ interface Event {
   organizer: string;
 }
 
+interface Achievement {
+  id?: string;
+  title: string;
+  description: string;
+  studentName: string;
+  date: string;
+  category: string;
+  imageUrl?: string;
+  status?: 'pending' | 'approved' | 'rejected';
+}
+
 interface UserProfile {
   name: string;
   email: string;
@@ -34,6 +45,72 @@ export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState('profile');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   
+  // Demo achievements data
+  const demoAchievements: Achievement[] = [
+    {
+      id: '1',
+      title: 'First Place in National Coding Competition',
+      description: 'Won first place in the annual national coding competition, demonstrating exceptional problem-solving skills and algorithmic thinking.',
+      studentName: 'John Doe',
+      date: '2024-01-15',
+      category: 'Competition',
+      imageUrl: 'https://thedailytexan.com/wp-content/uploads/2019/09/coding_2019-09-14_Terminal_Coding_Competition_Joshua.Guenther13782-scaled.jpg',
+      status: 'approved'
+    },
+    {
+      id: '2',
+      title: 'Research Paper Publication',
+      description: 'Published a research paper on Machine Learning applications in Healthcare in the International Journal of Computer Science.',
+      studentName: 'Jane Smith',
+      date: '2024-02-20',
+      category: 'Academic',
+      imageUrl: 'https://media.gettyimages.com/id/92259124/photo/laptop-computer-with-books-pen-and-yellow-legal-pad.jpg?s=612x612&w=gi&k=20&c=kU0y9uAryoziQKf0RcpOxXRU5j_YIR7QqZGGOEPuxuY=',
+      status: 'approved'
+    },
+    {
+      id: '3',
+      title: 'Startup Innovation Award',
+      description: 'Received the Young Innovator Award for developing a sustainable technology solution at the State Startup Summit.',
+      studentName: 'Mike Johnson',
+      date: '2024-03-05',
+      category: 'Innovation',
+      imageUrl: 'https://affairscloud.com/assets/uploads/2023/01/Union-Minister-Piyush-Goyal-felicitates-National-Startup-Awards-2022-winners.jpg.webp',
+      status: 'pending'
+    },
+    {
+      id: '4',
+      title: 'Community Service Recognition',
+      description: 'Recognized for developing a free coding education platform that has helped over 1000 underprivileged students learn programming.',
+      studentName: 'Sarah Williams',
+      date: '2024-03-10',
+      category: 'Social Impact',
+      imageUrl: 'https://example.com/community-service.jpg',
+      status: 'approved'
+    },
+    {
+      id: "5",
+      title: "Environmental Sustainability Champion",
+      description: "Led a campus-wide recycling initiative that reduced plastic waste by 40% over six months, engaging over 500 students.",
+      studentName: "Raj Mehta",
+      date: "2024-04-15",
+      category: "Social Impact",
+      imageUrl: "https://example.com/environmental-sustainability.jpg",
+      status: "approved"
+    },
+    {
+      id: "6",
+      title: "Mental Health Awareness Advocate",
+      description: "Organized a series of mental health workshops and support groups, benefiting more than 300 students and faculty.",
+      studentName: "Aisha Khan",
+      date: "2024-02-20",
+      category: "Social Impact",
+      imageUrl: "https://example.com/mental-health-awareness.jpg",
+      status: "approved"
+    }
+    
+    
+  ];
+
   // Demo events data
   const events: Event[] = [
     {
@@ -79,7 +156,19 @@ export default function StudentDashboard() {
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<UserProfile>>();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  
+  // Remove the duplicate declaration
+  // const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [showAchievementModal, setShowAchievementModal] = useState(false);
+  const [newAchievement, setNewAchievement] = useState<Achievement>({
+    title: '',
+    description: '',
+    studentName: userInfo?.name || '',
+    date: '',
+    category: '',
+    imageUrl: ''
+  });
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -198,8 +287,89 @@ export default function StudentDashboard() {
       console.error(err);
     }
   };
+  useEffect(() => {
+    if (activeTab === 'events') {
+      fetchEvents();
+    } else if (activeTab === 'achievements') {
+      fetchAchievements();
+    }
+  }, [activeTab]);
 
-  const navigationItems = [    { id: 'profile', label: 'Profile', icon: '👤' },    { id: 'events', label: 'Events', icon: '📅' }  ];
+  const fetchAchievements = async () => {
+    setLoading(true);
+    try {
+      // For demo purposes, using demo data instead of API call
+      setAchievements(demoAchievements);
+      // Uncomment below for actual API integration
+      const response = await fetch('http://localhost:8000/achievements', {
+        credentials: 'include',
+        headers: {
+          'X-CSRF-Token': sessionStorage.getItem('csrf_token') || ''
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch achievements');
+      const data = await response.json();
+      setAchievements(data);
+    } catch (error) {
+      console.error('Error fetching achievements:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateAchievement = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/achievements', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': sessionStorage.getItem('csrf_token') || ''
+        },
+        body: JSON.stringify(newAchievement)
+      });
+      if (!response.ok) throw new Error('Failed to create achievement');
+      const data = await response.json();
+      setAchievements([...achievements, data]);
+      setShowAchievementModal(false);
+      setNewAchievement({
+        title: '',
+        description: '',
+        studentName: userInfo?.name || '',
+        date: '',
+        category: '',
+        imageUrl: ''
+      });
+    } catch (error) {
+      console.error('Error creating achievement:', error);
+    }
+  };
+
+  const fetchEvents = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/events', {
+        credentials: 'include',
+        headers: {
+          'X-CSRF-Token': sessionStorage.getItem('csrf_token') || ''
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch events');
+      const data = await response.json();
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  
+  const navigationItems = [
+    { id: 'profile', label: 'Profile', icon: '👤' },
+    { id: 'events', label: 'Events', icon: '📅' },
+    { id: 'achievements', label: 'Achievements', icon: '🏆' },
+    { id: 'donations', label: 'Donations', icon: '💰' }
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-white">
@@ -303,7 +473,75 @@ export default function StudentDashboard() {
 
             {/* Main Content Area */}
             <div className={`${isSidebarCollapsed ? 'col-span-11' : 'col-span-9'} space-y-6 transition-all duration-300`}>
-              {/* Profile Content */}
+            // ... existing code ...
+  {activeTab === 'donations' && (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">Make a Donation</h2>
+        <form className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+              <input
+                type="text"
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter your full name"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter your email"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+              <input
+                type="tel"
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter your phone number"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
+              <input
+                type="number"
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter donation amount"
+                min="1"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Message (Optional)</label>
+            <textarea
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              rows={3}
+              placeholder="Enter your message"
+            ></textarea>
+          </div>
+          <div>
+            
+          </div>
+          <button
+            type="submit"
+            className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+          >
+            Make Donation
+          </button>
+        </form>
+      </div>
+    </div>
+  )}
+// ... existing code ...
+              {/* Events Content */}  
+
               {activeTab === 'profile' && (
                 <div className="space-y-6">
                   <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
@@ -550,6 +788,140 @@ export default function StudentDashboard() {
                   </div>
                 </div>
               )}
+
+              {/* Achievements Content */}
+              {activeTab === 'achievements' && (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
+                    <div className="flex justify-between items-start mb-6">
+                      <div>
+                        <h1 className="text-3xl font-bold text-gray-900 mb-2">College Achievements</h1>
+                        <p className="text-gray-600">Showcase your accomplishments and milestones</p>
+                      </div>
+                    </div>
+
+                    {loading ? (
+                      <div className="text-center py-10">
+                        <p className="text-black-600">Loading achievements...</p>
+                      </div>
+                    ) : achievements.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {achievements.map((achievement) => (
+                          <div key={achievement.id} className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                            <div className="h-40 bg-gray-100 flex items-center justify-center relative overflow-hidden">
+                              {achievement.imageUrl ? (
+                                <img 
+                                  src={achievement.imageUrl} 
+                                  alt={achievement.title}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-gray-500">No Image Available</span>
+                              )}
+                              
+                            </div>
+                            <div className="p-5">
+                            <div className="flex justify-between items-start mb-2">
+                              <h3 className="text-xl font-semibold text-gray-900">{achievement.title}</h3>
+                              <span className="bg-blue-100 text-blue-600 text-xs font-medium px-2.5 py-0.5 rounded">
+                               {achievement.category}
+                                </span>
+                                </div>
+
+                              <p className="text-gray-600 mb-4">{achievement.description}</p>
+                              <div className="flex justify-between items-center text-sm text-gray-500">
+                                <span>Date: {achievement.date}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-10">
+                        <p className="text-gray-600">No achievements found. Add your first achievement to get started!</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Achievement Modal */}
+      {showAchievementModal && (
+        <div 
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+          onClick={() => setShowAchievementModal(false)}
+        >
+          <div 
+            className="bg-white rounded-lg p-6 w-full max-w-2xl shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold mb-4">Add New Achievement</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <input
+                  type="text"
+                  value={newAchievement.title}
+                  onChange={(e) => setNewAchievement({...newAchievement, title: e.target.value})}
+                  className="w-full p-2 border rounded-lg"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={newAchievement.description}
+                  onChange={(e) => setNewAchievement({...newAchievement, description: e.target.value})}
+                  className="w-full p-2 border rounded-lg"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <input
+                  type="text"
+                  value={newAchievement.category}
+                  onChange={(e) => setNewAchievement({...newAchievement, category: e.target.value})}
+                  className="w-full p-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={newAchievement.date}
+                  onChange={(e) => setNewAchievement({...newAchievement, date: e.target.value})}
+                  className="w-full p-2 border rounded-lg"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
+                <input
+                  type="text"
+                  value={newAchievement.imageUrl}
+                  onChange={(e) => setNewAchievement({...newAchievement, imageUrl: e.target.value})}
+                  className="w-full p-2 border rounded-lg"
+                  placeholder="https://example.com/image.jpg"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setShowAchievementModal(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateAchievement}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Create Achievement
+              </button>
             </div>
           </div>
         </div>
