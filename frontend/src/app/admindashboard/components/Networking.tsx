@@ -91,10 +91,10 @@ export default function Networking() {
         }
       };
       
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setError('Failed to connect to chat server');
-      };
+      //ws.onerror = (error) => {
+      //console.error('WebSocket error:', error);
+      //  setError('Failed to connect to chat server');
+      //};
       
       ws.onclose = () => {
         console.log('WebSocket connection closed');
@@ -249,9 +249,24 @@ export default function Networking() {
     setNewMessage('');
   };
 
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [memberFilter, setMemberFilter] = useState<string>('All');
+  const handleMemberToggle = (userId: string) => {
+    setSelectedMembers(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
+  };
+  const handleSelectAll = () => {
+    setSelectedMembers((memberFilter === 'All' ? users : users.filter(u => u.role === memberFilter)).map(u => u._id));
+  };
+  const handleDeselectAll = () => {
+    setSelectedMembers([]);
+  };
+
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
-
+    if (selectedMembers.length === 0) {
+      setError('Please select at least one member.');
+      return;
+    }
     try {
       const response = await fetch('http://localhost:8000/groups/', {
         method: 'POST',
@@ -262,18 +277,19 @@ export default function Networking() {
         },
         body: JSON.stringify({
           name: newGroupName,
-          description: newGroupDescription
+          description: newGroupDescription,
+          members: selectedMembers,
+          type: 'community'
         })
       });
-
       if (!response.ok) {
         throw new Error('Failed to create group');
       }
-
       const newGroup = await response.json();
       setGroups(prev => [...prev, newGroup]);
       setNewGroupName('');
       setNewGroupDescription('');
+      setSelectedMembers([]);
       setShowCreateGroup(false);
     } catch (err) {
       console.error('Error creating group:', err);
@@ -445,48 +461,36 @@ export default function Networking() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
             <h3 className="text-xl font-semibold mb-4">Create New Group</h3>
-            
             <div className="mb-4">
-              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="groupName">
-                Group Name
-              </label>
-              <input
-                id="groupName"
-                type="text"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter group name"
-              />
+              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="groupName">Group Name</label>
+              <input id="groupName" type="text" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter group name" />
             </div>
-            
-            <div className="mb-6">
-              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="groupDescription">
-                Description
-              </label>
-              <textarea
-                id="groupDescription"
-                value={newGroupDescription}
-                onChange={(e) => setNewGroupDescription(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter group description"
-                rows={3}
-              />
+            <div className="mb-4">
+              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="groupDescription">Description</label>
+              <textarea id="groupDescription" value={newGroupDescription} onChange={(e) => setNewGroupDescription(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter group description" rows={3} />
             </div>
-            
+            <div className="mb-4">
+              <label className="block text-gray-700 text-sm font-bold mb-2">Select Members</label>
+              <div className="flex gap-2 mb-2">
+                <button type="button" className={`px-2 py-1 rounded ${memberFilter==='All'?'bg-blue-600 text-white':'bg-gray-200 text-gray-800'}`} onClick={()=>setMemberFilter('All')}>All</button>
+                <button type="button" className={`px-2 py-1 rounded ${memberFilter==='Student'?'bg-blue-600 text-white':'bg-gray-200 text-gray-800'}`} onClick={()=>setMemberFilter('Student')}>Students</button>
+                <button type="button" className={`px-2 py-1 rounded ${memberFilter==='Alumni'?'bg-blue-600 text-white':'bg-gray-200 text-gray-800'}`} onClick={()=>setMemberFilter('Alumni')}>Alumni</button>
+                <button type="button" className={`px-2 py-1 rounded ${memberFilter==='Admin'?'bg-blue-600 text-white':'bg-gray-200 text-gray-800'}`} onClick={()=>setMemberFilter('Admin')}>Admins</button>
+                <button type="button" className="px-2 py-1 rounded bg-green-500 text-white" onClick={handleSelectAll}>Select All</button>
+                <button type="button" className="px-2 py-1 rounded bg-red-500 text-white" onClick={handleDeselectAll}>Deselect All</button>
+              </div>
+              <div className="max-h-40 overflow-y-auto border rounded p-2">
+                {(memberFilter === 'All' ? users : users.filter(u => u.role === memberFilter)).length === 0 ? <div className="text-gray-500">No users found.</div> : (memberFilter === 'All' ? users : users.filter(u => u.role === memberFilter)).map(user => (
+                  <label key={user._id} className="flex items-center gap-2 mb-1 cursor-pointer">
+                    <input type="checkbox" checked={selectedMembers.includes(user._id)} onChange={()=>handleMemberToggle(user._id)} />
+                    <span>{user.name} <span className="text-xs text-gray-500">({user.role})</span></span>
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => setShowCreateGroup(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateGroup}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Create
-              </button>
+              <button onClick={()=>setShowCreateGroup(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">Cancel</button>
+              <button onClick={handleCreateGroup} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Create</button>
             </div>
           </div>
         </div>
