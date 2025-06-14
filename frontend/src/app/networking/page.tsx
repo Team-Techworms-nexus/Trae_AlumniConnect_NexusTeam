@@ -294,95 +294,44 @@ export default function NetworkingPage() {
   };
 
   // Navigation items for sidebar
-  const navigationItems = [
-    { id: 'profile', label: 'Profile', icon: '👤' },
-    { id: 'events', label: 'Events', icon: '📅' },
-    { id: 'achievements', label: 'Achievements', icon: '🏆' },
-    { id: 'networking', label: 'Networking', icon: '🌐', href: '/networking' },
-    { id: 'donations', label: 'Donations', icon: '💰' },
-    { id: 'directory', label: 'Directory', icon: '👥', href: '/directory' }
-  ];
+ 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-white">
       <Header />
       <div className="h-16"></div>
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-12 gap-6 relative">
-          {/* Sidebar Navigation */}
-          <div className={`${isSidebarCollapsed ? 'col-span-1' : 'col-span-3'} transition-all duration-300 ease-in-out`}>
-            <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-8 border border-gray-100 hover:shadow-xl transition-shadow duration-300">
-              <button
-                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                className="absolute -right-3 top-1/2 transform -translate-y-1/2 bg-blue-600 text-white p-2 rounded-full shadow-lg hover:bg-blue-700 transition-all duration-300 z-10"
-              >
-                <svg className={`w-4 h-4 transform transition-transform duration-300 ${isSidebarCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-
-              <nav className="space-y-2 mt-6">
-                {navigationItems.map(item => (
-                  <a
-                    key={item.id}
-                    href={item.href}
-                    className={`w-full flex items-center justify-${isSidebarCollapsed ? 'center' : 'between'} px-4 py-3 rounded-xl transition-all duration-200 group ${item.id === 'networking' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30 transform scale-105' : 'text-gray-700 hover:bg-gray-50'}`}
-                  >
-                    <div className={`flex items-center ${isSidebarCollapsed ? '' : 'space-x-3'}`}>
-                      <span className="text-xl group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
-                      {!isSidebarCollapsed && <span className="font-medium">{item.label}</span>}
-                    </div>
-                  </a>
-                ))}
-              </nav>
-
-              <div className="mt-8 pt-8 border-t border-gray-100">
-                <button 
-                  className={`w-full flex items-center justify-${isSidebarCollapsed ? 'center' : 'center space-x-2'} px-4 py-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all duration-200 group`}
-                  onClick={() => {
-                    localStorage.clear();
-                    window.location.href = '/';
-                  }}
-                >
-                  <svg className="w-5 h-5 transform group-hover:rotate-180 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  {!isSidebarCollapsed && <span className="font-medium">Logout</span>}
-                </button>
-              </div>
-            </div>
-          </div>
-
           {/* Main Content */}
           <div className={`${isSidebarCollapsed ? 'col-span-11' : 'col-span-9'} transition-all duration-300 ease-in-out`}>
-            <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-shadow duration-300">
-              <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">Networking</h2>
-            {userRole === 'Admin' && (
-              <button 
-                onClick={() => setShowCreateGroup(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Create New Group
-              </button>
-            )}
-          </div>
-          
-          <div className="flex space-x-4 mb-6">
-            <button
-              onClick={() => setChatType('group')}
-              className={`px-4 py-2 rounded-lg ${chatType === 'group' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}
-            >
-              Group Chat
-            </button>
-            <button
-              onClick={() => setChatType('individual')}
-              className={`px-4 py-2 rounded-lg ${chatType === 'individual' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}
-            >
-              Individual Chat
-            </button>
-          </div>
+            <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 hover:shadow-2xl transition-all duration-300">
+              <div className="flex justify-between items-center mb-8">
+                <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Networking</h2>
+                {userRole === 'Admin' && (
+                  <button 
+                    onClick={() => setShowCreateGroup(true)}
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-300"
+                  >
+                    Create New Group
+                  </button>
+                )}
+              </div>
+              
+              <div className="flex space-x-4 mb-8">
+                <button
+                  onClick={() => setChatType('group')}
+                  className={`px-6 py-3 rounded-xl transition-all duration-300 ${chatType === 'group' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Group Chat
+                </button>
+                <button
+                  onClick={() => setChatType('individual')}
+                  className={`px-6 py-3 rounded-xl transition-all duration-300 ${chatType === 'individual' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Individual Chat
+                </button>
+              </div>
 
               {error && (
                 <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -393,7 +342,7 @@ export default function NetworkingPage() {
               <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-300px)]">
                 {/* Groups/Users List */}
                 <div className="w-full md:w-1/3 bg-gray-50 rounded-lg shadow-sm overflow-y-auto">
-                  <div className="p-4 border-b border-gray-200 bg-white">
+                  <div className="p-4 border-b border-gray-100 bg-white">
                     <h3 className="font-medium text-gray-800">{chatType === 'group' ? 'Groups' : 'Users'}</h3>
                   </div>
                   
@@ -406,7 +355,7 @@ export default function NetworkingPage() {
                           <li 
                             key={group._id} 
                             onClick={() => handleGroupSelect(group)}
-                            className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-100 ${selectedGroup?._id === group._id ? 'bg-blue-50' : ''}`}
+                            className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-300 ${selectedGroup?._id === group._id ? 'bg-gradient-to-r from-blue-100 to-indigo-100' : ''}`}
                           >
                             <h4 className="font-medium text-gray-800">{group.name}</h4>
                             <p className="text-sm text-gray-500 truncate">{group.description}</p>
@@ -422,7 +371,7 @@ export default function NetworkingPage() {
                         <li 
                           key={user._id} 
                           onClick={() => handleUserSelect(user)}
-                          className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-100 ${selectedUser?._id === user._id ? 'bg-blue-50' : ''}`}
+                          className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-300 ${selectedUser?._id === user._id ? 'bg-gradient-to-r from-blue-100 to-indigo-100' : ''}`}
                         >
                           <h4 className="font-medium text-gray-800">{user.name}</h4>
                           <p className="text-sm text-gray-500 truncate">{user.email}</p>
@@ -439,16 +388,16 @@ export default function NetworkingPage() {
                 <div className="flex-1 flex flex-col bg-white rounded-lg shadow-sm overflow-hidden">
                   {(chatType === 'group' && selectedGroup) || (chatType === 'individual' && selectedUser) ? (
                     <>
-                      <div className="p-4 border-b border-gray-200 bg-blue-50">
+                      <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
                         {chatType === 'group' && selectedGroup ? (
                           <>
-                            <h3 className="font-medium text-gray-800">{selectedGroup.name}</h3>
-                            <p className="text-sm text-gray-500">{selectedGroup.description}</p>
+                            <h3 className="font-semibold text-gray-800 text-lg">{selectedGroup.name}</h3>
+                            <p className="text-sm text-gray-600">{selectedGroup.description}</p>
                           </>
                         ) : chatType === 'individual' && selectedUser ? (
                           <>
-                            <h3 className="font-medium text-gray-800">{selectedUser.name}</h3>
-                            <p className="text-sm text-gray-500">{selectedUser.email}</p>
+                            <h3 className="font-semibold text-gray-800 text-lg">{selectedUser.name}</h3>
+                            <p className="text-sm text-gray-600">{selectedUser.email}</p>
                             <span className={`inline-block w-2 h-2 rounded-full ml-2 ${selectedUser.status === 'online' ? 'bg-green-500' : 'bg-gray-400'}`}></span>
                           </>
                         ) : null}
@@ -479,7 +428,7 @@ export default function NetworkingPage() {
                         )}
                       </div>
                       
-                      <div className="p-4 border-t border-gray-200">
+                      <div className="p-4 border-t border-gray-100 bg-white">
                         <div className="flex">
                           <input
                             type="text"
@@ -487,11 +436,11 @@ export default function NetworkingPage() {
                             onChange={(e) => setNewMessage(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                             placeholder="Type a message..."
-                            className="flex-1 p-2 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="flex-1 p-3 border border-gray-200 rounded-l-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
                           <button
                             onClick={handleSendMessage}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-r-lg hover:bg-blue-700 transition-colors"
+                            className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-r-xl hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-300"
                           >
                             Send
                           </button>
@@ -512,11 +461,11 @@ export default function NetworkingPage() {
 
       {/* Create Group Modal */}
       {showCreateGroup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-            <h3 className="text-xl font-semibold mb-4">Create New Group</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md transform transition-all duration-300 hover:scale-[1.02]">
+            <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-6">Create New Group</h3>
             
-            <div className="mb-4">
+            <div className="mb-6">
               <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="groupName">
                 Group Name
               </label>
@@ -525,12 +474,12 @@ export default function NetworkingPage() {
                 type="text"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter group name"
               />
             </div>
             
-            <div className="mb-6">
+            <div className="mb-8">
               <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="groupDescription">
                 Description
               </label>
@@ -538,22 +487,22 @@ export default function NetworkingPage() {
                 id="groupDescription"
                 value={newGroupDescription}
                 onChange={(e) => setNewGroupDescription(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter group description"
                 rows={3}
               />
             </div>
             
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end space-x-4">
               <button
                 onClick={() => setShowCreateGroup(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                className="px-6 py-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-all duration-300"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateGroup}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-300"
               >
                 Create
               </button>
