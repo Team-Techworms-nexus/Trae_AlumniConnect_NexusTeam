@@ -24,10 +24,12 @@ from fastapi.responses import StreamingResponse
 import pandas as pd
 import random
 import io
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # MongoDB setup (global client, databases will be selected dynamically)
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://Shreyash:SSpJQXPAlb7dzO74@cluster0.gze09fx.mongodb.net/")
+MONGODB_URL = os.getenv("MONGODB_URL")
 client = AsyncIOMotorClient(MONGODB_URL)
 
 # Security
@@ -105,13 +107,12 @@ class StudentSchema(UserBase):
     linkedin: Optional[str] = None
     github: Optional[str] = None
     description: Optional[str] = None
-    
     prn: Optional[str] = None
     gradYear: Optional[int] = None
     degree: Optional[str] = None
     mentorshipStatus: Optional[str] = None
     skills: Optional[List[str]] = []
-    academicBackground: Optional[dict] = None
+    Experience: Optional[dict] = None
 
 class AlumniSchema(UserBase):
     prn: Optional[str] = None
@@ -186,7 +187,7 @@ class Group(GroupBase):
         populate_by_name=True
     )
 
-class CollegeCreate(BaseModel):
+class College(BaseModel):
     collegeId: str = Field(..., description="Unique identifier for the college")
     collegeName: str = Field(..., description="Official name of the college")
     email: str = Field(..., description="Official contact email of the college")
@@ -228,7 +229,7 @@ class CollegeCreate(BaseModel):
     )
 
 class CollegeRegistrationRequest(BaseModel):
-    college: CollegeCreate
+    college: College
     admin_password: str = Field(..., description="Password for college admin login")
 
 # Utility Functions
@@ -290,8 +291,8 @@ async def get_current_user(token: str = Depends(get_token_from_cookie)):
         raise credentials_exception
 
     # Fetch the college's database name from the global SaaS_Management database
-    saas_db = client["SaaS_Management"]
-    college = await saas_db.colleges.find_one({"collegeId": college_id})
+    SaaS_Management = client["SaaS_Management"]
+    college = await SaaS_Management.colleges.find_one({"collegeId": college_id})
     if not college:
         raise HTTPException(status_code=404, detail="College not found")
 
@@ -433,14 +434,14 @@ async def initialize_college_meta(college_db):
 
 @app.post("/colleges/")
 async def create_college(request: CollegeRegistrationRequest):
-    saas_db = client["SaaS_Management"]
+    SaaS_Management = client["SaaS_Management"]
     college = request.college
     admin_password = request.admin_password
 
-    existing_college = await saas_db.colleges.find_one({"collegeId": college.collegeId})
+    existing_college = await SaaS_Management.colleges.find_one({"collegeId": college.collegeId})
     if existing_college:
         raise HTTPException(status_code=400, detail="College already exists")
-    existing_college_name = await saas_db.colleges.find_one({"collegeName": college.collegeName})
+    existing_college_name = await SaaS_Management.colleges.find_one({"collegeName": college.collegeName})
     if existing_college_name:
         raise HTTPException(status_code=400, detail="College Name already exists")
     database_name = f"{college.collegeId}_AlumniConnect"
@@ -451,7 +452,7 @@ async def create_college(request: CollegeRegistrationRequest):
     college_dict["status"] = "pending"
     # Do NOT store password in college_dict
 
-    await saas_db.colleges.insert_one(college_dict)
+    await SaaS_Management.colleges.insert_one(college_dict)
 
     # Create the admin user in the college's database using college details
     college_db = client[database_name]
@@ -476,8 +477,8 @@ async def create_college(request: CollegeRegistrationRequest):
 
 @app.post("/login")
 async def login(credentials: LoginSchema, response: Response):
-    saas_db = client["SaaS_Management"]
-    college = await saas_db["colleges"].find_one({"collegeId": credentials.collegeId})
+    SaaS_Management = client["SaaS_Management"]
+    college = await SaaS_Management["colleges"].find_one({"collegeId": credentials.collegeId})
     if not college:
         raise HTTPException(status_code=404, detail="College not found")
 
@@ -525,6 +526,7 @@ async def login(credentials: LoginSchema, response: Response):
     # Also return CSRF token in JSON response for frontend to read and send as header
     return {
         "user_info": user,
+        "userId": str(user["_id"]),
         "csrf_token": csrf_token
     }
 
@@ -593,10 +595,59 @@ async def update_college_meta(college_db, update_type, count=1):
     
     await college_db["meta"].update_one({}, {"$set": updates})
 
+from fastapi import APIRouter, HTTPException, Response
+from pydantic import BaseModel
+import secrets
+
+class SuperAdminLoginSchema(BaseModel):
+    username: str
+    password: str
+
+@app.post("/superadmin/login")
+async def superadmin_login(credentials: SuperAdminLoginSchema, response: Response):
+    db = client["SaaS_Management"]
+    superadmin = await db["SuperAdmin"].find_one({"username": credentials.username})
+    if not superadmin:
+        raise HTTPException(status_code=400, detail="Superadmin not found")
+    if not verify_password(credentials.password, superadmin["password"]):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    # Prepare user info for token
+    user_info = {
+        "_id": str(superadmin["_id"]),
+        "username": superadmin["username"],
+        "role": "superadmin"
+    }
+    token = create_access_token(user_info, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    csrf_token = secrets.token_urlsafe(32)
+
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="Strict",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
+    )
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,
+        secure=True,
+        samesite="Strict",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
+    )
+    return {
+        "user_info": user_info,
+        "csrf_token": csrf_token
+    }    
+
 @app.post("/register")
 async def register(user: UserCreate, collegeId: str):
-    saas_db = client["SaaS_Management"]
-    college = await saas_db["colleges"].find_one({"collegeId": collegeId})
+    SaaS_Management = client["SaaS_Management"]
+    college = await SaaS_Management["colleges"].find_one({"collegeId": collegeId})
     if not college:
         raise HTTPException(status_code=404, detail="College not found")
 
@@ -641,6 +692,115 @@ async def read_users_me(current_user: dict = Depends(get_current_user)):
     del current_user["collegeDb"]
     return current_user
 
+@app.post("/users/me/skills")
+async def update_skill(current_user: dict = Depends(get_current_user), skill: dict = Body(...), _: str = Depends(verify_csrf)):
+    # skill: {"skill": "new_skill"}
+    print(skill)
+    SaaS_Management = client["SaaS_Management"]
+    college = await SaaS_Management["colleges"].find_one({"collegeId": current_user["collegeId"]})
+    college_db = client[college["databaseName"]]
+    new_skill = skill.get("skill")
+    if not new_skill or not isinstance(new_skill, str):
+        raise HTTPException(status_code=400, detail="Invalid skill data")
+
+    # Determine user collection based on role
+    user_collection = None
+    if current_user["role"] == "Student":
+        user_collection = college_db.Student
+    elif current_user["role"] == "Alumni":
+        user_collection = college_db.Alumni
+    else:
+        raise HTTPException(status_code=403, detail="Only students or alumni can update skills")
+    print(current_user["email"])
+    # Add skill if not already present
+    result = await user_collection.update_one(
+        {"email": current_user["email"]},
+        {"$addToSet": {"skills": new_skill}}
+    )
+    print(result)
+    return {"message": "Skill added successfully"}
+
+    
+@app.put("/users/me")
+async def update_user_profile(current_user: dict = Depends(get_current_user), profile_data: dict = Body(...), _: str = Depends(verify_csrf)):
+    # Update user profile information
+    SaaS_Management = client["SaaS_Management"]
+    college = await SaaS_Management["colleges"].find_one({"collegeId": current_user["collegeId"]})
+    college_db = client[college["databaseName"]]
+    
+    # Determine user collection based on role
+    if current_user["role"] == "Student":
+        user_collection = college_db.Student
+    elif current_user["role"] == "Alumni":
+        user_collection = college_db.Alumni
+    else:
+        raise HTTPException(status_code=403, detail="Only students or alumni can update their profile")
+    
+    # Fields that can be updated
+    allowed_fields = ["name", "department"]
+    update_data = {}
+    
+    for field in allowed_fields:
+        if field in profile_data and profile_data[field]:
+            update_data[field] = profile_data[field]
+    
+    # Handle gradYear separately (it's called graduationYear in frontend)
+    if "graduationYear" in profile_data and profile_data["graduationYear"]:
+        try:
+            grad_year = int(profile_data["graduationYear"])
+            update_data["gradYear"] = grad_year
+        except (ValueError, TypeError):
+            pass
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    
+    # Update the user document
+    result = await user_collection.update_one(
+        {"email": current_user["email"]},
+        {"$set": update_data}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="Profile update failed")
+    
+    # Fetch and return the updated user document
+    updated_user = await user_collection.find_one({"email": current_user["email"]})
+    updated_user["_id"] = str(updated_user["_id"])
+    if "password" in updated_user:
+        del updated_user["password"]
+    
+    return updated_user
+
+@app.post("/users/me/experience")
+async def update_experience(current_user: dict = Depends(get_current_user), experience: dict = Body(...), _: str = Depends(verify_csrf)):
+    # Handle both direct experience object and wrapped experience object
+    SaaS_Management = client["SaaS_Management"]
+    college = await SaaS_Management["colleges"].find_one({"collegeId": current_user["collegeId"]})
+    college_db = client[college["databaseName"]]
+    
+    # Check if the experience is wrapped in an 'experience' field or sent directly
+    new_experience = experience.get("experience") if "experience" in experience else experience
+    
+    if not new_experience or not isinstance(new_experience, dict):
+        raise HTTPException(status_code=400, detail="Invalid experience data")
+
+    if current_user["role"] == "Student":
+        user_collection = college_db.Student
+        update_field = "Experience"
+    elif current_user["role"] == "Alumni":
+        user_collection = college_db.Alumni
+        update_field = "professionalExperience"
+    else:
+        raise HTTPException(status_code=403, detail="Only students or alumni can update experience")
+
+    result = await user_collection.update_one(
+        {"email": current_user["email"]},
+        {"$addToSet": {update_field: new_experience}}
+    )
+    
+    # Return the experience data that was added
+    return new_experience
 
 @app.get("/users/{user_id}")
 async def get_user_profile(user_id: str, current_user: dict = Depends(get_current_user),_: str = Depends(verify_csrf)):
@@ -755,6 +915,10 @@ async def read_messages(
 
 @app.post("/groups/")
 async def create_group(group: GroupCreate, current_user: dict = Depends(get_current_user)):
+    # Only allow admins to create groups
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only admins can create groups")
+        
     college_db = current_user["collegeDb"]
 
     group_dict = group.dict()
@@ -816,9 +980,17 @@ async def add_group_member(group_id: str, member_id: str, current_user: dict = D
         {"$addToSet": {"members": ObjectId(member_id)}}
     )
     return {"status": "success", "message": "Member added to group"}
+    
 @app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = None):
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
     try:
+        # Extract token from cookies
+        cookies = websocket.cookies
+        token = cookies.get("access_token")
+        if not token:
+            await websocket.close(code=1008, reason="No access token found")
+            return
+            
         # Verify token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("email")
@@ -828,8 +1000,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = No
             return
 
         # Get the college database
-        saas_db = client["SaaS_Management"]
-        college = await saas_db.colleges.find_one({"collegeId": college_id})
+        SaaS_Management = client["SaaS_Management"]
+        college = await SaaS_Management.colleges.find_one({"collegeId": college_id})
         if not college:
             await websocket.close(code=1008)
             return
@@ -960,19 +1132,18 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = No
 
 
 @app.get("/colleges/")
-async def get_colleges(status: str = None, search: str = None, skip: int = 0, limit: int = 100, current_user: dict = Depends(get_current_user),_: str = Depends(verify_csrf)):
-    # Only allow superadmin (global admin) to access this endpoint
-    
-    
-    if current_user["role"] != "Student" :
-        raise HTTPException(status_code=403, detail="Not authorized to view colleges.")
-    saas_db = client["SaaS_Management"]
+async def get_colleges(status: str = None, search: str = None, skip: int = 0, limit: int = 100, current_user: dict = Depends(get_current_user), _: str = Depends(verify_csrf)):
+    # Only allow superadmin to access this endpoint
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only superadmin can view colleges")
+
+    SaaS_Management = client["SaaS_Management"]
     query = {}
     if status:
         query["status"] = status
     if search:
         query["collegeName"] = {"$regex": search, "$options": "i"}
-    cursor = saas_db.colleges.find(query).skip(skip).limit(limit)
+    cursor = SaaS_Management.colleges.find(query).skip(skip).limit(limit)
     colleges = []
     async for college in cursor:
         college["_id"] = str(college["_id"])
@@ -980,9 +1151,13 @@ async def get_colleges(status: str = None, search: str = None, skip: int = 0, li
     return {"colleges": colleges}
     
 @app.post("/colleges/{college_id}/approve")
-async def approve_college(college_id: str):
-    saas_db = client["SaaS_Management"]
-    college = await saas_db.colleges.find_one({"collegeId": college_id})
+async def approve_college(college_id: str, current_user: dict = Depends(get_current_user), _: str = Depends(verify_csrf)):
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only superadmin can approve colleges")
+
+    SaaS_Management = client["SaaS_Management"]
+
+    college = await SaaS_Management.colleges.find_one({"collegeId": college_id})
     if not college:
         raise HTTPException(status_code=404, detail="College not found")
     if college.get("status") == "approved":
@@ -990,21 +1165,46 @@ async def approve_college(college_id: str):
     if college.get("status") == "rejected":
         raise HTTPException(status_code=400, detail="College has been rejected and cannot be approved.")
     # Update status to approved
-    await saas_db.colleges.update_one({"collegeId": college_id}, {"$set": {"status": "approved"}})
-    database_name = college["databaseName"]
-    college_db = client[database_name]
-    # Create collections if not already present
-    existing_collections = await college_db.list_collection_names()
-    collections_to_create = ["groups", "messages", "userchats", "Admin", "Alumni", "Student"]
-    for coll in collections_to_create:
-        if coll not in existing_collections:
-            await college_db.create_collection(coll)
-    # Add indexes for performance
-    await college_db["messages"].create_index([("senderId", 1), ("receiverId", 1), ("timestamp", -1)])
-    await college_db["messages"].create_index([("groupId", 1), ("timestamp", -1)])
-    await college_db["groups"].create_index([("members", 1)])
+    await SaaS_Management.colleges.update_one({"collegeId": college_id}, {"$set": {"status": "approved"}})
 
-    return {"status": "success", "message": f"College {college['collegeName']} approved and collections created."}
+    try:
+        collegedb = client[college["databaseName"]]
+        existing_collections = await collegedb.list_collection_names()
+        
+        collections_to_create = ["groups", "messages", "userchats", "Admin", "Alumni", "Student"]
+        for coll in collections_to_create:
+            if coll not in existing_collections:
+                print(f"Creating collection {coll} in {college['databaseName']}")
+                await collegedb.create_collection(coll)
+
+        await collegedb["messages"].create_index([("senderId", 1), ("receiverId", 1), ("timestamp", -1)])
+        await collegedb["messages"].create_index([("groupId", 1), ("timestamp", -1)])
+        await collegedb["groups"].create_index([("members", 1)])
+        print(f"All collections created successfully for {college['databaseName']}")
+    except Exception as e:
+        print(f"Error creating collections: {e}")
+        # You might want to revert the approval status if collection creation fails
+        # await SaaS_Management.colleges.update_one({"collegeId": college_id}, {"$set": {"status": "pending"}})
+        # raise HTTPException(status_code=500, detail=f"Error creating collections: {str(e)}")
+
+    return {"message": "College approved successfully"}
+
+@app.post("/colleges/{college_id}/reject")
+async def reject_college(college_id: str, current_user: dict = Depends(get_current_user), _: str = Depends(verify_csrf)):
+    if current_user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Only superadmin can reject colleges")
+
+    SaaS_Management = client["SaaS_Management"]
+    college = await SaaS_Management.colleges.find_one({"collegeId": college_id})
+    if not college:
+        raise HTTPException(status_code=404, detail="College not found")
+    if college.get("status") == "rejected":
+        return {"status": "already_rejected", "message": f"College {college['collegeName']} is already rejected."}
+    if college.get("status") == "approved":
+        raise HTTPException(status_code=400, detail="College has been approved and cannot be rejected.")
+    # Update status to rejected
+    await SaaS_Management.colleges.update_one({"collegeId": college_id}, {"$set": {"status": "rejected"}})
+    return {"message": "College rejected successfully"}
 
 class CollegeLogin(BaseModel):
     collegeId: str
@@ -1019,8 +1219,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60  # or your desired value
 
 @app.post("/college-login")
 async def college_login(credentials: CollegeLogin):
-    saas_db = client["SaaS_Management"]
-    college = await saas_db["colleges"].find_one({"collegeId": credentials.collegeId})
+    SaaS_Management = client["SaaS_Management"]
+    college = await SaaS_Management["colleges"].find_one({"collegeId": credentials.collegeId})
     
     if not college:
         raise HTTPException(status_code=404, detail="College not found")
@@ -1055,6 +1255,7 @@ async def college_login(credentials: CollegeLogin):
             "collegeName": college["collegeName"],
             "status": college["status"],
         },
+        "userId": str(admin["_id"]),
         "csrf_token": csrf_token  # Also send in body so frontend can use in headers
     })
 
@@ -1223,9 +1424,9 @@ async def bulk_register_students(
     if current_user["role"] != "Admin":
         raise HTTPException(status_code=403, detail="Only college admins can bulk register students.")
     
-    saas_db = client["SaaS_Management"]
+    SaaS_Management = client["SaaS_Management"]
     college_id = current_user["collegeId"]
-    college = await saas_db.colleges.find_one({"collegeId": college_id})
+    college = await SaaS_Management.colleges.find_one({"collegeId": college_id})
     
     if not college or college.get("status") != "approved":
         raise HTTPException(status_code=403, detail="College account is not approved yet")
@@ -1326,9 +1527,9 @@ async def bulk_register_alumni(
     # Only allow Admins
     if current_user["role"] != "Admin":
         raise HTTPException(status_code=403, detail="Only college admins can bulk register alumni.")
-    saas_db = client["SaaS_Management"]
+    SaaS_Management = client["SaaS_Management"]
     college_id = current_user["collegeId"]
-    college = await saas_db.colleges.find_one({"collegeId": college_id})
+    college = await SaaS_Management.colleges.find_one({"collegeId": college_id})
     if not college or college.get("status") != "approved":
         raise HTTPException(status_code=403, detail="College account is not approved yet")
     college_db = current_user["collegeDb"]

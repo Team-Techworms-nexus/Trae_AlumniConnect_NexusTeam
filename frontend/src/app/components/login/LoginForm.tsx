@@ -54,6 +54,12 @@ export default function LoginForm() {
     if (data.csrf_token) {
       sessionStorage.setItem('csrf_token', data.csrf_token);
     }
+    
+    // Store user ID in sessionStorage
+    if (data.userId) {
+      sessionStorage.setItem('user_id', data.userId);
+      console.log('User ID stored:', data.userId);
+    }
   
     if (!response.ok) {
       throw new Error(data.error || 'Login failed');

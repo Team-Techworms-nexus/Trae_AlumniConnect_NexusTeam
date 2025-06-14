@@ -192,7 +192,7 @@ export default function StudentDashboard() {
           graduationYear: data.gradYear?.toString() || '',
           role: data.role,
           skills: data.skills || [],
-          experiences: data.professionalExperience || []
+          experiences: data.professionalExperience || data.Experience || []
         };
         setUserInfo(profile);
         setEditForm(profile);
@@ -368,6 +368,7 @@ export default function StudentDashboard() {
     { id: 'profile', label: 'Profile', icon: '👤' },
     { id: 'events', label: 'Events', icon: '📅' },
     { id: 'achievements', label: 'Achievements', icon: '🏆' },
+    { id: 'networking', label: 'Networking', icon: '🌐', href: '/networking' },
     { id: 'donations', label: 'Donations', icon: '💰' },
     { id: 'directory', label: 'Directory', icon: '👥', href: '/directory' }
   ];

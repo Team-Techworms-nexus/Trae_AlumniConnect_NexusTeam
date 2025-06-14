@@ -8,6 +8,7 @@ import Students from './components/Students';
 import Alumni from './components/Alumni';
 import Admins from './components/Admins';
 import Groups from './components/Groups';
+import Networking from './components/Networking';
 import Events from './components/Events';
 import Achievements from './components/Achievements';
 import Donations from './components/Donations';
@@ -64,6 +65,7 @@ useEffect(() => {
     { id: 'alumni', label: 'Manage Alumni', icon: '🎓' },
     { id: 'admins', label: 'Manage Admins', icon: '👥' },
     { id: 'groups', label: 'Manage Groups', icon: '👥' },
+    { id: 'networking', label: 'Networking', icon: '🌐' },
     { id: 'events', label: 'Events', icon: '📅' },
     { id: 'achievements', label: 'Achievements', icon: '🏆' },
     { id: 'donations', label: 'Donations', icon: '💸' },
@@ -117,6 +119,8 @@ useEffect(() => {
         return <Admins />;
       case 'groups':
         return <Groups />;
+      case 'networking':
+        return <Networking />;
       case 'events':
         return <Events />;
       case 'achievements':
